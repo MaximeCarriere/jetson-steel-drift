@@ -40,24 +40,13 @@ masks themselves:
 *Fill ratio = defect pixels ÷ bounding-box area. Near 1.0 is a solid blob; low is a thin or
 wispy shape.*
 
-Read across the rows and the four classes are genuinely different problems:
+The four classes are very different problems:
 
-- **Class 2 is the hard one.** 247 examples — a **21× imbalance** against class 3 — and the
-  narrowest shape in the set (median 24 px wide on a 1600 px strip, but 208 px tall, i.e. a
-  near-vertical streak spanning most of the strip height). Rare *and* thin is the worst
-  combination for a segmentation model: it contributes almost nothing to a pixel-averaged
-  loss, and a few pixels of boundary error wreck its Dice. **Expect class 2 to be the first
-  thing that breaks, and expect XP04 to find its calibration is the worst of the four** —
-  exactly the case the plan predicts an unchanged mean will hide.
-- **Class 3 dominates.** 72.6% of all annotations. A model that only ever predicts class 3
-  will look respectable on a mean-Dice metric. This is the failure mode to guard the
-  baseline against.
-- **Class 4 is large and solid** — median 6.2% of the image, up to 47%. Easiest to
-  segment; least informative about drift sensitivity.
-- **Classes 1 and 3 are wispy** (fill 0.39 / 0.30) — they scatter across their bounding box
-  rather than filling it, which is why coarse or downsampled predictions smear them.
-- Area spans four orders of magnitude: class 3 runs from 0.03% to **89.9%** of the image.
-  Any single resize or crop strategy trades one end of that range against the other.
+- **Class 1** — scattered small spots. Wispy.
+- **Class 2** — the hard one: rarest (247 images, 21× fewer than c3) and thinnest (a ~24 px
+  streak). Rare + thin = easy to miss.
+- **Class 3** — the common one: 73% of all defects, and sizes from tiny to huge.
+- **Class 4** — big solid patches. The easiest to find.
 
 ![training examples](../../results/figures/xp01_examples_train.png)
 *Training data — clean strips and the four defect classes, masks overlaid. Clean = no
@@ -87,19 +76,21 @@ not a 5-way softmax**. A softmax would assert mutual exclusivity that 427 images
 
 ## The model
 
-**U-Net with a ResNet-34 encoder, fine-tuned** (via
-[segmentation_models.pytorch](https://github.com/qubvel-org/segmentation_models.pytorch),
-MIT). The encoder starts from ImageNet weights, so we only fine-tune on Severstal — a few
-GPU-hours, not a from-scratch train. (No Kaggle solution publishes usable weights, so
-fine-tuning our own is the shortest path anyway.) The head is **four independent sigmoid
-masks**, one per class — not a 5-way softmax — because 427 images carry more than one
-defect at once.
+- **Architecture:** U-Net with a **ResNet-34 encoder**.
+- **Fine-tuned:** the encoder starts from ImageNet weights; we only train on Severstal (a
+  few GPU-hours, not from scratch).
+- **Output:** 4 independent masks, one per defect — not a single "pick one" softmax,
+  because an image can have several defects at once.
 
-**Loss: Dice + BCE.** BCE alone fails silently here: 47% of images are clean and the median
-defect covers ~3% of its image, so "predict nothing" already scores well on pixel-averaged
-BCE. Dice measures overlap per class, so a rare, small defect still contributes to the
-gradient in proportion to its own area — which is what keeps the small classes from being
-ignored.
+**Loss = Dice + BCE.** Two loss terms, added together:
+
+- **BCE** (binary cross-entropy) — grades each pixel: "defect or not?" Simple, but fooled
+  here: 47% of images are clean, so a model that predicts *nothing* already scores well.
+- **Dice** — grades the **overlap** between the predicted mask and the true mask (1 =
+  perfect overlap, 0 = none). It cares about shape, so small rare defects still count.
+
+BCE keeps pixel accuracy honest; Dice stops the model from ignoring the small classes. We
+use both.
 
 ## Result — run 1: a competent c3/c4 detector, blind to c1/c2
 
