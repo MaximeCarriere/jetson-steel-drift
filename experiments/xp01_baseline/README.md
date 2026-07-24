@@ -59,6 +59,11 @@ Read across the rows and the four classes are genuinely different problems:
 - Area spans four orders of magnitude: class 3 runs from 0.03% to **89.9%** of the image.
   Any single resize or crop strategy trades one end of that range against the other.
 
+![training examples](../../results/figures/xp01_examples_train.png)
+*Training data — clean strips and the four defect classes, masks overlaid. Clean = no
+defect (47% of images). c1 = scattered spots, c2 = thin vertical streak, c3 = vertical
+scratches, c4 = large patches. The size gap between the classes is the whole story.*
+
 ### Class co-occurrence
 
 Almost all defective images carry exactly one class:
@@ -80,77 +85,21 @@ Almost all defective images carry exactly one class:
 is close to — but not exactly — single-label, which means **four independent binary masks,
 not a 5-way softmax**. A softmax would assert mutual exclusivity that 427 images violate.
 
-## Don't train from scratch — what's actually available
+## The model
 
-Surveyed 2026-07-23. **Almost nobody published Severstal-trained weights.** Every
-well-known solution repo is code-only, and the winning solutions are multi-model ensembles
-that a Jetson could not serve anyway.
+**U-Net with a ResNet-34 encoder, fine-tuned** (via
+[segmentation_models.pytorch](https://github.com/qubvel-org/segmentation_models.pytorch),
+MIT). The encoder starts from ImageNet weights, so we only fine-tune on Severstal — a few
+GPU-hours, not a from-scratch train. (No Kaggle solution publishes usable weights, so
+fine-tuning our own is the shortest path anyway.) The head is **four independent sigmoid
+masks**, one per class — not a 5-way softmax — because 427 images carry more than one
+defect at once.
 
-| Source | Result | Weights? | Licence |
-|---|---|---|---|
-| Kaggle 1st place | **0.90883** private Dice | ❌ writeup only | — |
-| [khornlund](https://github.com/khornlund/severstal-steel-defect-detection) | #55/2436, 0.90274 | ❌ code only (`download.sh` fetches *data*) | **none** |
-| [TheoViel](https://github.com/TheoViel/kaggle_severstal) | ~#40 | ❌ | **none** |
-| [VitalyPavlov](https://github.com/VitalyPavlov/Kaggle_Severstal) | 0.903 | ❌ | **none** |
-| [zdaiot](https://github.com/zdaiot/Kaggle-Steel-Defect-Detection) | #96 (top 4%) | ❌ | MIT |
-| [betty0/steel-defect-segmentation](https://huggingface.co/betty0/steel-defect-segmentation) | mask mAP50 **0.587** | ✅ **`.pt` + `.onnx`** | **AGPL-3.0** |
-
-Two traps in that table:
-
-- **"No licence" is not permissive.** A GitHub repo without a `LICENSE` file is
-  all-rights-reserved by default. khornlund's 266-star repo included — the *code* is not
-  licensed for reuse, never mind weights it does not ship.
-- **`steven0226/steel-defect-segmentation` is a byte-identical mirror** of betty0's model
-  card and weights (diff is 4 lines: repo URLs). It is not a second, independent option.
-
-### The one downloadable model
-
-**betty0 / steel-defect-segmentation** — YOLO26s-seg fine-tuned on Severstal, 4 classes,
-ships both `.pt` and a NMS-free `.onnx`. Held-out val (734 images, seed 42, `imgsz=1024`):
-mask mAP50 **0.587**, mAP50-95 0.232; 8.04 ms on an RTX 4090. Per class, mAP50: defect_1
-0.537 · defect_2 0.543 · defect_3 0.625 · defect_4 0.642.
-
-Its own card makes an honest observation worth carrying into XP01: **defect_2, the rarest
-class, outscores defect_1 despite ~10× less data** — thin elongated shapes with ambiguous
-boundaries hurt mask IoU more than scarcity does. That matches the geometry measured above
-(class 1: fill 0.39, median 58 px wide) and warns against reading the 21× imbalance as the
-whole story.
-
-**Why it is not the default here.** Two reasons, neither about accuracy:
-
-1. **AGPL-3.0.** Ultralytics weights are AGPL unless you hold an Enterprise licence.
-   Network-served derivative works must publish source. For a demo on a company website
-   that is a legal decision, not a technical one.
-2. **Wrong output shape for the science.** This project lives or dies on XP04 (reliability
-   diagrams, ECE), XP07 (confidence vs accuracy divergence) and XP08 (confidence/entropy
-   distribution shift). Those need a **dense per-pixel probability map**. YOLO instance
-   segmentation gives per-*instance* detection scores; there is no clean pixel-level
-   reliability diagram to build from it, and XP03's "agreement rate — do the two models
-   flag the same pixels?" gets awkward too.
-
-### Decision
-
-**Fine-tune a U-Net/FPN from [segmentation_models.pytorch](https://github.com/qubvel-org/segmentation_models.pytorch)**
-(MIT, 11.7k stars, actively maintained) with an **ImageNet-pretrained** `resnet34` or
-`efficientnet-b0` encoder.
-
-This is *not* training from scratch — the encoder is pretrained and only the Severstal
-fine-tune is ours, a few GPU-hours. It is also exactly what khornlund and the 1st-place
-solution built on (SMP + EfficientNet/ResNet encoders, U-Net and FPN heads), minus the
-ensemble. It gives:
-
-- dense sigmoid probabilities per class → XP04/XP07/XP08 work as written;
-- four independent binary masks → matches the co-occurrence structure above;
-- a single small model → clean ONNX → TensorRT for XP02/XP03, and a meaningful
-  monitoring-overhead denominator in XP12;
-- MIT throughout.
-
-**Target: ~0.88–0.90 holdout Dice.** Competent, not competitive — chasing the 0.909 winner
-would mean an ensemble, which XP02 and XP12 cannot use.
-
-**Keep betty0's ONNX as a cross-check.** Running it on the frozen holdout costs nothing and
-gives an independent second opinion on our baseline — and if the AGPL question is resolved
-in its favour, it becomes a zero-training fallback.
+**Loss: Dice + BCE.** BCE alone fails silently here: 47% of images are clean and the median
+defect covers ~3% of its image, so "predict nothing" already scores well on pixel-averaged
+BCE. Dice measures overlap per class, so a rare, small defect still contributes to the
+gradient in proportion to its own area — which is what keeps the small classes from being
+ignored.
 
 ## Result — run 1: a competent c3/c4 detector, blind to c1/c2
 
@@ -218,15 +167,17 @@ per-class F1 tuning, figures — stays; only `lib/models.DiceBCELoss` and the cr
 experiments (you can't measure drift-degradation on a class the model never detects), so
 this is a gate before XP02.
 
-### Data at a glance
+### Test data
+
+The same five categories on the **frozen holdout** — the split the model never trains on,
+used only for the measurement above:
+
+![test examples](../../results/figures/xp01_examples_test.png)
+*Test data (frozen holdout): clean + the four defect classes. Same distribution as the
+training gallery; Severstal's real test labels are private, so this holdout is our test.*
 
 ![data distribution](../../results/figures/xp01_data_distribution.png)
 *Why c1/c2 are hard: 21× rarer than c3, and the smallest/thinnest shapes.*
-
-![class examples](../../results/figures/xp01_class_examples.png)
-*The four (anonymous) classes with masks overlaid — train (left) vs frozen holdout (right).
-c1 = scattered spots, c2 = thin vertical streak, c3 = vertical scratches, c4 = large
-patches. The size gap is the whole story.*
 
 ## Method
 

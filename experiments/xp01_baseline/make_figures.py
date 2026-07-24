@@ -149,53 +149,40 @@ def _overlay(ax, iid: str, rles: dict, img_dir: str, title: str,
     ax.set_xticks([]); ax.set_yticks([])
 
 
-def fig_class_examples(n_per: int = 2) -> None:
-    """One block per class: train examples vs holdout examples, mask overlaid.
+def fig_fold_gallery(fold: str, filename: str, title: str, n_per: int = 3) -> None:
+    """One gallery for a fold: five rows — clean, then each defect class overlaid.
 
-    Picks images carrying ONLY that class so the overlay is unambiguous. Answers the
-    "show me the four classes, in train and in test" ask directly.
+    Clean is a real category (47% of the data), so it gets a row of its own with no
+    overlay. Defect rows pick images carrying ONLY that class so the overlay is
+    unambiguous. Called once per fold to produce a self-contained training gallery and a
+    self-contained test gallery.
     """
     index = load_index()
-    split = load_split()
-    train_set, hold_set = set(split["train"]), set(split["holdout"])
+    ids = set(load_split()[fold])
+    rows = [("clean", None)] + [(f"class {c}", c) for c in CLASS_IDS]
 
-    def pick(fold_set, cid, k):
-        out = [i for i in sorted(fold_set)
-               if set(index[i]) == {cid} and masks_for(index[i])[CLASS_IDS.index(cid)].sum() > 400]
-        return out[:k]
-
-    ncol = 2 * n_per
-    fig, axes = plt.subplots(len(CLASS_IDS), ncol, figsize=(4.2 * ncol, 1.7 * len(CLASS_IDS)))
-    for r, c in enumerate(CLASS_IDS):
-        for j, iid in enumerate(pick(train_set, c, n_per)):
-            _overlay(axes[r, j], iid, index[iid], TRAIN_IMG_DIR, f"train · {iid}")
-        for j, iid in enumerate(pick(hold_set, c, n_per)):
-            _overlay(axes[r, n_per + j], iid, index[iid], TRAIN_IMG_DIR,
-                     f"holdout · {iid}")
-        axes[r, 0].set_ylabel(f"class {c}", color=COLORS[c], fontsize=12,
-                              fontweight="bold", rotation=90, labelpad=10)
+    fig, axes = plt.subplots(len(rows), n_per, figsize=(5.2 * n_per, 1.55 * len(rows)))
+    for r, (label, cid) in enumerate(rows):
+        if cid is None:
+            picks = [i for i in sorted(ids) if not index[i]][:n_per]
+            color = MUTED
+        else:
+            i = CLASS_IDS.index(cid)
+            picks = [x for x in sorted(ids)
+                     if set(index[x]) == {cid} and masks_for(index[x])[i].sum() > 400][:n_per]
+            color = COLORS[cid]
+        for j in range(n_per):
+            ax = axes[r, j]
+            if j < len(picks):
+                iid = picks[j]
+                _overlay(ax, iid, index[iid] if cid else {}, TRAIN_IMG_DIR, iid)
+            else:
+                ax.axis("off")
+        axes[r, 0].set_ylabel(label, color=color, fontsize=13, fontweight="bold",
+                              rotation=90, labelpad=12)
         axes[r, 0].set_yticks([])
-    for ax in axes.flat:
-        if not ax.has_data():
-            ax.axis("off")
-    fig.suptitle("XP01 — the four defect classes, mask overlaid · left half = train, "
-                 "right half = frozen holdout ('test')", fontsize=12, y=1.01)
-    fig.text(0.5, -0.01, "Severstal test labels are private, so 'test' = our frozen "
-             "holdout. Colours match the class palette used throughout.",
-             ha="center", fontsize=8, color=MUTED)
-    _save(fig, "xp01_class_examples.png")
-
-
-def fig_clean_examples(n: int = 4) -> None:
-    split = load_split()
-    index = load_index()
-    clean = [i for i in sorted(split["holdout"]) if not index[i]][:n]
-    fig, axes = plt.subplots(n, 1, figsize=(10, 1.5 * n))
-    for ax, iid in zip(np.atleast_1d(axes), clean):
-        _overlay(ax, iid, {}, TRAIN_IMG_DIR, f"clean (no defect) · {iid}")
-    fig.suptitle("XP01 — clean strips (47% of the data): the model must stay silent here",
-                 fontsize=11, y=1.02)
-    _save(fig, "xp01_clean_examples.png")
+    fig.suptitle(title, fontsize=13, y=1.005)
+    _save(fig, filename)
 
 
 # --------------------------------------------------------------------------- fig 4
@@ -345,10 +332,13 @@ def main() -> int:
     args = a.parse_args()
 
     print("generating XP01 figures...")
-    fig_training_curves()
     fig_data_distribution()
-    fig_class_examples()
-    fig_clean_examples()
+    fig_fold_gallery("train", "xp01_examples_train.png",
+                     "XP01 — Severstal, TRAINING data: clean + the four defect classes")
+    fig_fold_gallery("holdout", "xp01_examples_test.png",
+                     "XP01 — Severstal, TEST data (frozen holdout): clean + the four "
+                     "defect classes")
+    fig_training_curves()
     if os.path.isfile(os.path.join(RESULTS, "xp01_baseline.json")):
         fig_confusion()
         fig_holdout_dice()
