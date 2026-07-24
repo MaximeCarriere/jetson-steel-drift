@@ -1,96 +1,79 @@
 # XP02 — Calibration: can we trust the model's certainty?
 
-**Question.** When the model flags class X, it also produces a confidence number. If it
-says **80% sure**, is it right **80% of the time**? That property — *calibration* — is what
-lets a factory route uncertain cases to a human. It is completely separate from accuracy: a
-model can be accurate and still lie about how sure it is.
+**Question.** For each strip the model produces a **certainty that there's a defect**. If it
+says **80% sure**, is there really a defect **80% of the time**? That property —
+*calibration* — is what lets a factory route uncertain strips to a human. It is separate
+from accuracy: a model can be accurate and still lie about how sure it is.
+
+We look at the simple, operator-facing decision: **defect vs clean** (any of the four
+classes), not per-class.
 
 **No retraining.** This is post-hoc analysis of the XP01 model's own outputs. Temperature
-scaling fits a **single number per class** on validation — a calibration transform, not a
-weight update.
+scaling fits **one number** on validation — a calibration transform, not a weight update.
 
 ## The certainty measure
 
-When the model fires class X on a strip, we take the **average confidence over the pixels
-it flagged** as the certainty of that prediction. Then we ask, across the frozen test set:
-of the flags made at certainty ≈ C, what fraction were actually correct? A well-calibrated
-model lands on the diagonal (certainty = correctness).
+For each strip, certainty = how strong the **strongest defect evidence** is: the average of
+the 200 most defect-like pixels, squashed to 0–1. Clean strips should score low, defect
+strips high. Then, across the frozen test set, we bin strips by certainty and check: of the
+strips it was ~C sure about, how many really had a defect?
 
-We look at it two ways:
-- **Prediction-level** — the operator-facing number above. "It flagged class 3 at 0.9."
-- **Pixel-level** — the classic per-pixel view, for completeness.
+## Results — the model is over-confident, and its certainty is all-or-nothing
 
-## Results — the model is badly over-confident
+Two findings on the frozen test set (53% of strips really have a defect):
 
-When the model flags a class, it is on average **97% confident — but right only 75% of the
-time.** Its confidence is nearly flat at ~0.97 regardless of whether it's actually correct,
-which makes the raw number almost useless as a probability.
+1. **When it's sure, it's over-confident.** In the big high-certainty group — strips it is
+   **~99% sure** have a defect — only **77%** actually do. So about **1 in 5 confident "defect"
+   calls is a false alarm** on clean steel.
+2. **When it's unsure, it's trustworthy.** Strips it gives ~1% certainty are clean ~99% of
+   the time. The low end is honest.
 
-Prediction-level, per class (frozen holdout):
-
-| Class | Says (mean confidence) | Actually right | ECE raw | Temp T | ECE after |
-|---|---:|---:|---:|---:|---:|
-| 1 | 99% | 74% | 0.25 | 3.3 | **0.06** |
-| 2 | 99% | **57%** | 0.42 | 5.9 | 0.13 |
-| 3 | 97% | 79% | 0.18 | 2.4 | 0.13 |
-| 4 | 96% | 60% | 0.36 | 4.8 | 0.29 |
-| **overall** | **97%** | **75%** | **0.22** | 2.8 | **0.15** |
-
-**Class 2 is the sharpest example of the danger:** it says ~99% sure and is right barely
-more than half the time — confidently wrong, exactly the silent-failure mode this whole
-project exists to catch.
+The catch is the shape: the model's certainty is **almost all-or-nothing** — it piles strips
+at ~0% or ~100% and rarely says anything in between (see the histogram). So there's little
+useful "70% sure, send to a human" middle ground.
 
 ![reliability](../../results/figures/xp02_reliability.png)
-*Reliability per class: predicted certainty (x) vs how often it was actually correct (y).
-The dashed line is perfect calibration. A curve **below** the line = over-confident (says
-80%, right less often).*
 
-![ece](../../results/figures/xp02_ece.png)
-*Calibration error (ECE — the average gap between confidence and correctness) before and
-after temperature scaling. Left: prediction-level (what an operator sees). Right:
-pixel-level.*
+**How to read it.** The x-axis is what the model *said* (its certainty there's a defect);
+the y-axis is what *actually happened* (how often there really was one). The dashed diagonal
+is perfect honesty — say 80%, right 80%. A curve **below** the diagonal means
+**over-confident**: it claims more certainty than it delivers.
 
 ![confidence histogram](../../results/figures/xp02_confidence_hist.png)
-*Where confident flags (green) and false alarms (orange) fall on the certainty axis — they
-sit right on top of each other near 1.0, so the raw certainty barely separates right from
-wrong.*
+*Certainty for strips that really have a defect (green) vs really clean (grey). Clean strips
+sitting at high certainty are the false alarms.*
 
-### Does temperature scaling fix it?
+## ECE and temperature scaling, in plain words
 
-Temperature scaling rescales every confidence by one number, without changing which class
-ranks highest — accuracy is untouched, only the probabilities move.
+- **ECE** (Expected Calibration Error) is one number for *how much the confidence lies*: the
+  average gap between what the model says and what actually happens. ECE 0 = perfect; bigger
+  = worse. If it says 90% but is right 70%, that's a 20-point gap.
+- **Raw** = the number straight from the model. **Calibrated** = the same prediction after
+  temperature scaling divides the model's internal score by one number (T) so the
+  percentages become honest. Same decisions, more truthful numbers.
 
-**It helps, but only partly, and unevenly.** The fitted temperatures are large (T = 2.4–5.9,
-where 1.0 = no change), which is itself a measure of how over-confident the model is. It
-roughly halves the overall error (ECE 0.22 → 0.15) and nearly fixes classes 1 and 2 (0.25 →
-0.06, 0.42 → 0.13). But it **barely moves class 4** (0.36 → 0.29) — so part of the
-miscalibration is **structural**, not a simple scale issue, and no single scalar rescues it.
+Here temperature scaling (T = 3.5) **barely helps**: overall ECE moves only 0.19 → 0.17
+(the Brier score improves more, 0.18 → 0.13). One knob can't fix it, because the low-certainty
+end is *already* honest and only the high-certainty end is inflated — so the miscalibration
+is partly **structural**, not a simple uniform scale error.
 
-### The pixel-level trap
+## Verdict — is this certainty usable as a decision variable?
 
-Measured per pixel, calibration looks *fine* (ECE ~0.03). That's misleading: pixel-level is
-dominated by the vast, easy, confidently-correct background, so it hides the failure. The
-**prediction-level** number — the one an operator actually sees — is where the model is
-badly miscalibrated. When two views disagree like this, the operator-facing one is the truth.
-
-## Verdict — is this confidence usable as a decision variable?
-
-**Raw: no.** It sits at ~97% no matter what, so it carries almost no information about
-whether the flag is right. **After per-class temperature scaling: usable with care** for
-classes 1–3, but class 4 stays over-confident and should not be trusted as a probability.
-Calibration is *not* a set-and-forget deploy step here — it's per-class, imperfect, and (as
-XP07 will test) unlikely to survive drift unchanged.
+**As a raw probability, no** — "99% sure" really means "right ~80% of the time," and
+temperature scaling only partly closes that gap. **As a coarse gate, yes**: *unsure* reliably
+means clean, so the model can safely wave through the strips it's unsure about. But the
+*sure* bucket still hides ~20% false alarms, and because the certainty is all-or-nothing
+there's almost no calibrated middle band to route to a human. Calibration here is not a
+one-line deploy fix — and XP07 will test whether even this much survives drift.
 
 **Feeds:** XP08 — one candidate label-free drift signal is *confidence-distribution shift*.
-XP02's answer: that signal is only usable on **temperature-scaled, per-class** confidence,
-never the raw number — and even then class 4 is weak. XP07 will check whether the
-calibration holds up once conditions drift.
+That's only meaningful if confidence means something to begin with; XP02 decides whether it
+earns a place in XP08, and XP07 will check whether the calibration survives drift.
 
 ## Blog post
 
 *"When the model says 80%, is it right 80% of the time?"* — this experiment is the whole
-post: the certainty measure, the reliability diagram, and whether one scalar fixes it. It
-stands alone and is useful to anyone deploying a model, not just this project.
+post: the certainty measure, the reliability diagram, and whether one number fixes it.
 
 ## Reproduce
 

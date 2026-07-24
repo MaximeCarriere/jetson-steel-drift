@@ -1,9 +1,8 @@
-"""XP02 figures — reliability diagrams and ECE, before vs after temperature scaling.
+"""XP02 figures — clean-vs-defect calibration.
 
     python experiments/xp02_calibration/make_figures.py
 
-Reads results/xp02_calibration.json + results/raw/xp02_reliability.npz (produced by
-calibrate.py). Plots from those, so no model is needed here.
+Reads results/xp02_calibration.json + results/raw/xp02_reliability.npz.
 """
 from __future__ import annotations
 
@@ -17,21 +16,19 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
-from lib import calibration as cal                        # noqa: E402
-from lib.severstal import CLASS_IDS, ROOT                 # noqa: E402
+from lib.severstal import ROOT                            # noqa: E402
 
 FIG_DIR = os.path.join(ROOT, "results", "figures")
 JSON = os.path.join(ROOT, "results", "xp02_calibration.json")
 NPZ = os.path.join(ROOT, "results", "raw", "xp02_reliability.npz")
 
-COLORS = {"1": "#E69F00", "2": "#56B4E9", "3": "#009E73", "4": "#D55E00"}
 INK, MUTED, GRID = "#222222", "#666666", "#dddddd"
+RAW, CAL = "#D55E00", "#0072B2"      # raw = orange, calibrated = blue
 plt.rcParams.update({
     "figure.facecolor": "white", "axes.facecolor": "white", "axes.edgecolor": MUTED,
     "axes.labelcolor": INK, "text.color": INK, "xtick.color": MUTED, "ytick.color": MUTED,
-    "axes.titlecolor": INK, "font.size": 10, "axes.grid": True, "grid.color": GRID,
-    "grid.linewidth": 0.7, "axes.axisbelow": True, "figure.dpi": 120,
-    "savefig.bbox": "tight",
+    "axes.titlecolor": INK, "font.size": 11, "axes.grid": True, "grid.color": GRID,
+    "grid.linewidth": 0.7, "axes.axisbelow": True, "figure.dpi": 120, "savefig.bbox": "tight",
 })
 
 
@@ -42,80 +39,47 @@ def _save(fig, name):
     print(f"  wrote results/figures/{name}")
 
 
-def _reliability_curve(ax, conf, correct, color, label):
-    bins = cal.reliability_bins(conf, correct, n_bins=10)
+def _curve(ax, bins, color, label):
     xs = [b["conf_mean"] for b in bins if b["count"]]
     ys = [b["accuracy"] for b in bins if b["count"]]
-    ax.plot(xs, ys, marker="o", ms=5, lw=2, color=color, label=label)
+    ax.plot(xs, ys, marker="o", ms=7, lw=2.5, color=color, label=label, zorder=4)
 
 
 def fig_reliability():
-    """One panel per class: predicted certainty vs actual correctness, raw + calibrated.
-
-    The dashed diagonal is perfect calibration. A curve BELOW it means over-confident
-    (says 80%, right less often); above means under-confident.
-    """
-    res = json.load(open(JSON))["prediction_level"]
-    npz = np.load(NPZ)
-    fig, axes = plt.subplots(1, 4, figsize=(16, 4.2))
-    for ax, c in zip(axes, CLASS_IDS):
-        ax.plot([0, 1], [0, 1], ls="--", color=MUTED, lw=1)
-        _reliability_curve(ax, npz[f"pred_{c}_conf_raw"], npz[f"pred_{c}_correct"],
-                           COLORS[c], "raw")
-        _reliability_curve(ax, npz[f"pred_{c}_conf_cal"], npz[f"pred_{c}_correct"],
-                           INK, f"calibrated (T={res[c]['temperature']:.2f})")
-        r = res[c]
-        ax.set(xlim=(0, 1), ylim=(0, 1), xlabel="predicted certainty",
-               ylabel="actually correct" if c == "1" else "",
-               title=f"class {c}   ECE {r['raw']['ece']:.02f} → {r['calibrated']['ece']:.02f}")
-        ax.title.set_color(COLORS[c])
-        ax.legend(loc="upper left", fontsize=8)
-    fig.suptitle("XP02 — reliability: when the model flags a class at certainty C, is it "
-                 "right C of the time?  (below the diagonal = over-confident)",
-                 fontsize=12, y=1.03)
+    """Single, plain reliability diagram for the defect/no-defect decision."""
+    d = json.load(open(JSON))
+    fig, ax = plt.subplots(figsize=(7.2, 7))
+    ax.fill_between([0, 1], [0, 1], [0, 0], color="#D55E00", alpha=0.06, zorder=0)
+    ax.text(0.72, 0.28, "over-confident\n(says more than it delivers)", fontsize=9,
+            color=RAW, ha="center", style="italic")
+    ax.plot([0, 1], [0, 1], ls="--", color=MUTED, lw=1.3, label="perfect (honest)")
+    _curve(ax, d["raw"]["reliability"], RAW, f"raw  (ECE {d['raw']['ece']:.02f})")
+    _curve(ax, d["calibrated"]["reliability"], CAL,
+           f"calibrated, T={d['temperature']:.1f}  (ECE {d['calibrated']['ece']:.02f})")
+    ax.set(xlim=(0, 1), ylim=(0, 1),
+           xlabel="the model's certainty there is a defect",
+           ylabel="how often there actually was a defect",
+           title="XP02 — when the model says it's C% sure there's a defect,\n"
+                 "is there really a defect C% of the time?")
+    ax.legend(loc="upper left", fontsize=10)
+    ax.set_aspect("equal")
     _save(fig, "xp02_reliability.png")
 
 
-def fig_ece():
-    """ECE per class, prediction-level and pixel-level, raw vs after temperature scaling."""
-    res = json.load(open(JSON))
-    fig, (axP, axX) = plt.subplots(1, 2, figsize=(13, 4.4))
-    x = np.arange(len(CLASS_IDS)); w = 0.38
-    for ax, level, title in ((axP, "prediction_level", "Prediction-level (operator sees)"),
-                             (axX, "pixel_level", "Pixel-level")):
-        d = res[level]
-        raw = [d[c]["raw"]["ece"] for c in CLASS_IDS]
-        calb = [d[c]["calibrated"]["ece"] for c in CLASS_IDS]
-        ax.bar(x - w / 2, raw, w, label="raw", color=MUTED, alpha=0.6)
-        b = ax.bar(x + w / 2, calb, w, label="temperature-scaled",
-                   color=[COLORS[c] for c in CLASS_IDS])
-        for i in range(len(CLASS_IDS)):
-            ax.text(i - w / 2, raw[i] + 0.003, f"{raw[i]:.02f}", ha="center", fontsize=8,
-                    color=MUTED)
-            ax.text(i + w / 2, calb[i] + 0.003, f"{calb[i]:.02f}", ha="center", fontsize=8)
-        ax.set(xticks=x, xticklabels=[f"c{c}" for c in CLASS_IDS], ylabel="ECE (lower=better)",
-               title=title)
-        ax.legend(fontsize=8); ax.grid(axis="x", visible=False)
-    fig.suptitle("XP02 — calibration error before vs after temperature scaling",
-                 fontsize=12, y=1.02)
-    _save(fig, "xp02_ece.png")
-
-
 def fig_confidence_hist():
-    """Distribution of the model's prediction certainty, split by whether it was correct."""
+    """Certainty distribution for real-defect strips vs real-clean strips (raw)."""
     npz = np.load(NPZ)
-    conf = np.concatenate([npz[f"pred_{c}_conf_raw"] for c in CLASS_IDS])
-    corr = np.concatenate([npz[f"pred_{c}_correct"] for c in CLASS_IDS]).astype(bool)
-    fig, ax = plt.subplots(figsize=(8, 4.4))
-    bins = np.linspace(conf.min(), 1.0, 26)
-    ax.hist(conf[corr], bins=bins, color="#009E73", alpha=0.7, label="correct flags")
-    ax.hist(conf[~corr], bins=bins, color="#D55E00", alpha=0.7, label="false alarms")
-    ax.set(xlabel="prediction certainty (raw)", ylabel="count",
-           title="XP02 — do confident flags separate from false alarms?")
-    ax.legend(fontsize=9); ax.grid(axis="x", visible=False)
-    fig.text(0.5, -0.02, "If the two distributions overlap heavily, certainty does not "
-             "separate right from wrong — a key calibration failure mode.",
-             ha="center", fontsize=8, color=MUTED)
+    conf, label = npz["conf_raw"], npz["label"].astype(bool)
+    fig, ax = plt.subplots(figsize=(8, 4.6))
+    bins = np.linspace(0, 1, 26)
+    ax.hist(conf[label], bins=bins, color="#009E73", alpha=0.75, label="really has a defect")
+    ax.hist(conf[~label], bins=bins, color=MUTED, alpha=0.7, label="really clean")
+    ax.set(xlabel="the model's certainty there is a defect (raw)", ylabel="number of strips",
+           title="XP02 — do defect strips and clean strips get different certainties?")
+    ax.legend(fontsize=10); ax.grid(axis="x", visible=False)
+    fig.text(0.5, -0.02, "Good separation = the certainty is informative. Clean strips "
+             "sitting at high certainty are false alarms.", ha="center", fontsize=9,
+             color=MUTED)
     _save(fig, "xp02_confidence_hist.png")
 
 
@@ -124,7 +88,6 @@ def main():
         print("run calibrate.py first", file=sys.stderr); return 2
     print("generating XP02 figures...")
     fig_reliability()
-    fig_ece()
     fig_confidence_hist()
     print("done.")
     return 0
