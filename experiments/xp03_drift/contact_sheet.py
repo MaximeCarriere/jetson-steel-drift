@@ -25,10 +25,14 @@ LABELS = {"light_corner": "light glare (top-right)", "marks": "blob contaminatio
           "streaks": "defect-like streaks"}
 
 
+PREFERRED = "0d78ac743.jpg"       # bright strip, visible class-4 defect, no dark border
+
+
 def main() -> int:
-    # a defective strip, so we can see the drift interact with a real defect
+    # a bright defective strip, so the drifts are clearly visible against a real defect
     index = load_index()
-    iid = next(i for i in sorted(load_split()["holdout"]) if index[i])
+    hold = load_split()["holdout"]
+    iid = PREFERRED if PREFERRED in hold else next(i for i in sorted(hold) if index[i])
     img = np.array(Image.open(os.path.join(TRAIN_IMG_DIR, iid)).convert("L"))
 
     kinds, sev = drift.KINDS, drift.SEVERITIES
