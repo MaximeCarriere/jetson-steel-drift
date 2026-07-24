@@ -29,6 +29,17 @@ LABELS = {"light_corner": "light glare", "marks": "blob contamination",
 PREFERRED = "0d78ac743.jpg"       # bright strip, visible class-4 defect, no dark border
 
 
+def _severity_arrow(fig) -> None:
+    """A downward 'severity' arrow on the far left; rows are labelled with just the number."""
+    import matplotlib.patches as mpatches
+    fig.subplots_adjust(left=0.10)
+    fig.text(0.028, 0.5, "severity", rotation=90, va="center", ha="center", fontsize=13,
+             fontweight="bold")
+    fig.add_artist(mpatches.FancyArrowPatch(
+        (0.055, 0.87), (0.055, 0.13), transform=fig.transFigure,
+        arrowstyle="-|>", mutation_scale=22, lw=2.2, color="#333"))
+
+
 def main() -> int:
     # a bright defective strip, so the drifts are clearly visible against a real defect
     index = load_index()
@@ -48,12 +59,13 @@ def main() -> int:
             ax.set_xticks([]); ax.set_yticks([])
             if r == 0:
                 ax.set_title(LABELS[kind], fontsize=12, fontweight="bold")
-        axes[r, 0].set_ylabel(f"severity {s:g}", fontsize=12, fontweight="bold")
-    fig.suptitle(f"XP03 — drift contact sheet: three drifts (columns), rising severity "
-                 f"(rows) · strip {iid}", fontsize=13, y=1.0)
-    fig.text(0.5, -0.01, "severity 0 = original, increasing downward. Same drift order "
-             "(left to right) as the degradation curves.", ha="center", fontsize=9,
-             color="#666")
+        axes[r, 0].set_ylabel(f"{s:g}", fontsize=12, fontweight="bold", rotation=0,
+                              labelpad=12, va="center")
+    _severity_arrow(fig)
+    fig.suptitle(f"XP03 — drift contact sheet: three drifts (columns) · strip {iid}",
+                 fontsize=13, y=1.0)
+    fig.text(0.5, -0.01, "Same drift order (left to right) as the degradation curves.",
+             ha="center", fontsize=9, color="#666")
     os.makedirs(FIG_DIR, exist_ok=True)
     out = os.path.join(FIG_DIR, "xp03_contact_sheet.png")
     fig.savefig(out, dpi=130, bbox_inches="tight")

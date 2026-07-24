@@ -30,9 +30,20 @@ from lib.severstal import CLASS_IDS, ROOT, TRAIN_IMG_DIR, load_split  # noqa: E4
 FIG_DIR = os.path.join(ROOT, "results", "figures")
 CKPT = os.path.join(ROOT, "results/raw/xp01_ckpt/best.pt")
 BASELINE = os.path.join(ROOT, "results/xp01_baseline.json")
-CLEAN = "8becd4279.jpg"          # bright, genuinely clean holdout strip
+CLEAN = "74e586515.jpg"          # smooth, uniform, genuinely clean holdout strip
 LABELS = {"light_corner": "light glare", "marks": "blob contamination",
           "streaks": "defect-like streaks"}
+
+
+def _severity_arrow(fig) -> None:
+    """A downward 'severity' arrow on the far left; rows labelled with just the number."""
+    import matplotlib.patches as mpatches
+    fig.subplots_adjust(left=0.10)
+    fig.text(0.028, 0.5, "severity", rotation=90, va="center", ha="center", fontsize=13,
+             fontweight="bold")
+    fig.add_artist(mpatches.FancyArrowPatch(
+        (0.055, 0.87), (0.055, 0.13), transform=fig.transFigure,
+        arrowstyle="-|>", mutation_scale=22, lw=2.2, color="#333"))
 
 
 @torch.no_grad()
@@ -81,7 +92,9 @@ def main() -> int:
                         fontsize=10, fontweight="bold", va="top")
             if r == 0:
                 ax.set_title(LABELS[kind], fontsize=12, fontweight="bold")
-        axes[r, 0].set_ylabel(f"severity {s:g}", fontsize=12, fontweight="bold")
+        axes[r, 0].set_ylabel(f"{s:g}", fontsize=12, fontweight="bold", rotation=0,
+                              labelpad=12, va="center")
+    _severity_arrow(fig)
     fig.suptitle(f"XP03 — a CLEAN strip: does drift make the model see a defect? "
                  f"(red = false detection) · strip {iid}", fontsize=13, y=1.0)
     fig.text(0.5, -0.01, "Severity 0 (top) is the untouched clean strip — it should be "
