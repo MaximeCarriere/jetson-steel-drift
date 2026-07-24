@@ -39,30 +39,47 @@ def _save(fig, name):
     print(f"  wrote results/figures/{name}")
 
 
-def _curve(ax, bins, color, label):
-    xs = [b["conf_mean"] for b in bins if b["count"]]
-    ys = [b["accuracy"] for b in bins if b["count"]]
-    ax.plot(xs, ys, marker="o", ms=7, lw=2.5, color=color, label=label, zorder=4)
 
 
 def fig_reliability():
-    """Single, plain reliability diagram for the defect/no-defect decision."""
-    d = json.load(open(JSON))
-    fig, ax = plt.subplots(figsize=(7.2, 7))
-    ax.fill_between([0, 1], [0, 1], [0, 0], color="#D55E00", alpha=0.06, zorder=0)
-    ax.text(0.72, 0.28, "over-confident\n(says more than it delivers)", fontsize=9,
-            color=RAW, ha="center", style="italic")
-    ax.plot([0, 1], [0, 1], ls="--", color=MUTED, lw=1.3, label="perfect (honest)")
-    _curve(ax, d["raw"]["reliability"], RAW, f"raw  (ECE {d['raw']['ece']:.02f})")
-    _curve(ax, d["calibrated"]["reliability"], CAL,
-           f"calibrated, T={d['temperature']:.1f}  (ECE {d['calibrated']['ece']:.02f})")
-    ax.set(xlim=(0, 1), ylim=(0, 1),
-           xlabel="the model's certainty there is a defect",
-           ylabel="how often there actually was a defect",
-           title="XP02 — when the model says it's C% sure there's a defect,\n"
-                 "is there really a defect C% of the time?")
+    """Grouped bars per certainty band: what the model SAID vs what ACTUALLY happened.
+
+    Clearer than a line reliability diagram for this model, whose certainty is
+    all-or-nothing: the strip COUNT on each band shows where the data actually is (almost
+    all in the lowest and highest bands), and the gap between the two bars is the
+    over-confidence.
+    """
+    npz = np.load(NPZ)
+    conf, label = npz["conf_raw"], npz["label"].astype(float)
+    edges = np.linspace(0, 1, 6)                            # 5 bands: 0-20 .. 80-100 %
+    says, real, counts, mids = [], [], [], []
+    for i in range(5):
+        lo, hi = edges[i], edges[i + 1]
+        m = (conf >= lo) & (conf < hi if i < 4 else conf <= hi)
+        counts.append(int(m.sum()))
+        says.append(float(conf[m].mean()) if m.any() else 0.0)
+        real.append(float(label[m].mean()) if m.any() else 0.0)
+        mids.append((lo + hi) / 2)
+    x = np.arange(5); w = 0.38
+    fig, ax = plt.subplots(figsize=(10, 5.6))
+    ax.bar(x - w / 2, says, w, color=RAW, alpha=0.85, label="what the model SAID")
+    ax.bar(x + w / 2, real, w, color="#009E73", label="what ACTUALLY happened")
+    for i in range(5):
+        if counts[i]:
+            ax.text(x[i] - w / 2, says[i] + 0.015, f"{says[i]:.0%}", ha="center", fontsize=8)
+            ax.text(x[i] + w / 2, real[i] + 0.015, f"{real[i]:.0%}", ha="center", fontsize=8)
+        top = max(says[i], real[i])
+        ax.text(x[i], top + 0.08, f"{counts[i]:,} strips", ha="center", fontsize=8.5,
+                color=MUTED, fontweight="bold")
+    ax.set(xticks=x, xticklabels=["0–20%", "20–40%", "40–60%", "60–80%", "80–100%"],
+           ylim=(0, 1.12), ylabel="fraction", xlabel="the certainty the model gave",
+           title="XP02 — when the model gives this certainty of a defect,\n"
+                 "how often is it right?  (orange above green = over-confident)")
     ax.legend(loc="upper left", fontsize=10)
-    ax.set_aspect("equal")
+    ax.grid(axis="x", visible=False)
+    fig.text(0.5, -0.02, "Almost every strip is in the lowest or highest band — the model "
+             "is all-or-nothing. In the top band it says ~99% sure but is right only 75%.",
+             ha="center", fontsize=9, color=MUTED)
     _save(fig, "xp02_reliability.png")
 
 

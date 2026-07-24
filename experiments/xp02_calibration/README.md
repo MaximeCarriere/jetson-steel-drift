@@ -22,9 +22,9 @@ strips it was ~C sure about, how many really had a defect?
 
 Two findings on the frozen test set (53% of strips really have a defect):
 
-1. **When it's sure, it's over-confident.** In the big high-certainty group — strips it is
-   **~99% sure** have a defect — only **77%** actually do. So about **1 in 5 confident "defect"
-   calls is a false alarm** on clean steel.
+1. **When it's sure, it's over-confident.** In the big high-certainty group (1,321 strips) —
+   ones it is **~99% sure** have a defect — only **75%** actually do. So about **1 in 4
+   confident "defect" calls is a false alarm** on clean steel.
 2. **When it's unsure, it's trustworthy.** Strips it gives ~1% certainty are clean ~99% of
    the time. The low end is honest.
 
@@ -34,10 +34,12 @@ useful "70% sure, send to a human" middle ground.
 
 ![reliability](../../results/figures/xp02_reliability.png)
 
-**How to read it.** The x-axis is what the model *said* (its certainty there's a defect);
-the y-axis is what *actually happened* (how often there really was one). The dashed diagonal
-is perfect honesty — say 80%, right 80%. A curve **below** the diagonal means
-**over-confident**: it claims more certainty than it delivers.
+**How to read it.** Strips are grouped by the certainty the model gave. In each band, the
+**orange bar is what the model said** (its average certainty) and the **green bar is what
+actually happened** (how often those strips really had a defect). When the two match, the
+model is honest; **orange above green means over-confident**. It's over-confident in every
+band, worst at the top: it says ~99% but is right ~75%. The strip counts show almost
+everything lands in the lowest (504) or highest (1,321) band — the model is all-or-nothing.
 
 ![confidence histogram](../../results/figures/xp02_confidence_hist.png)
 *Certainty for strips that really have a defect (green) vs really clean (grey). Clean strips
@@ -59,10 +61,10 @@ is partly **structural**, not a simple uniform scale error.
 
 ## Verdict — is this certainty usable as a decision variable?
 
-**As a raw probability, no** — "99% sure" really means "right ~80% of the time," and
+**As a raw probability, no** — "99% sure" really means "right ~75% of the time," and
 temperature scaling only partly closes that gap. **As a coarse gate, yes**: *unsure* reliably
 means clean, so the model can safely wave through the strips it's unsure about. But the
-*sure* bucket still hides ~20% false alarms, and because the certainty is all-or-nothing
+*sure* bucket still hides ~25% false alarms, and because the certainty is all-or-nothing
 there's almost no calibrated middle band to route to a human. Calibration here is not a
 one-line deploy fix — and XP07 will test whether even this much survives drift.
 
