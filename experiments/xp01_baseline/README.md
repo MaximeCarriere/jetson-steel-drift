@@ -38,9 +38,9 @@ just 1–4. Measured from the masks:
 - **Class 3** — the common one, 73% of all defects.
 - **Class 4** — big solid patches, easiest to find.
 
-![training examples](../../results/figures/xp01_examples_train.png)
-*Training data: clean strips + the four defect classes, masks overlaid. The size gap
-between the classes is the whole story.*
+![examples](../../results/figures/xp01_examples.png)
+*One example each — clean and the four defect classes. Left: the raw strip. Right: the same
+strip with the ground-truth mask. The size gap between the classes is the whole story.*
 
 Almost every defective image has just **one** class; the only common pairing is 3+4, and
 classes 1 and 4 never appear together. That's why the model outputs **4 independent masks**
@@ -65,7 +65,39 @@ rather than forcing one label per pixel — an image can have more than one defe
 
 ## Results (frozen holdout)
 
-Trained 20 epochs on the Jetson Orin Nano itself (~2 h), scored once on the frozen test set:
+Trained 20 epochs on the Jetson Orin Nano itself (~2 h), scored once on the frozen test set.
+**Every class is detected** (recall 0.70–0.97) with usable masks.
+
+![training curves](../../results/figures/xp01_training_curves.png)
+*Training loss falls smoothly; per-class validation recall shows all four classes are
+learned and stay detected throughout.*
+
+### Does it see a defect at all?
+
+The first thing a factory cares about — "any defect vs clean":
+
+![presence vs absence](../../results/figures/xp01_presence_absence.png)
+*Catches **94%** of defective strips, correctly leaves **80%** of clean strips alone,
+**88%** overall accuracy. It rarely misses a defect (6%); the cost is that ~20% of clean
+strips get a false flag.*
+
+### Which class does it predict?
+
+![class confusion](../../results/figures/xp01_class_confusion.png)
+*Row % — of each true class, what the model predicted. The diagonal (correct) is strong.
+The main error is **over-predicting class 3**: some clean and class-4 strips get called
+class 3.*
+
+### Specificity per class
+
+Of the strips that do **not** have a class, how often the model correctly leaves them alone:
+
+![specificity](../../results/figures/xp01_specificity.png)
+*Classes 1, 2, 4 rarely false-alarm (96–99%). Class 3 is lowest at **83%** — it's the
+over-predicted one, and the reason ~20% of clean strips get flagged. A stricter class-3
+threshold or a defect/no-defect gate is the obvious next improvement.*
+
+### Per-class scorecard
 
 | Class | Detection recall | Precision | Mask overlap (Dice) |
 |---|---:|---:|---:|
@@ -75,48 +107,9 @@ Trained 20 epochs on the Jetson Orin Nano itself (~2 h), scored once on the froz
 | 4 | 0.97 | 0.60 | 0.74 |
 | **mean** | — | — | **0.59** |
 
-Every class is detected (recall 0.70–0.97) with usable masks. Class 3/4 are strongest;
-class 2 is the weakest and noisiest — it has the fewest examples, so treat its numbers as
-indicative.
-
 ![scorecard](../../results/figures/xp01_holdout_dice.png)
-
-### Does it see a defect at all?
-
-Collapsing the four classes to a single "any defect vs clean" decision — the first thing a
-factory cares about:
-
-![presence vs absence](../../results/figures/xp01_presence_absence.png)
-*It catches **94%** of defective strips and correctly leaves **80%** of clean strips alone,
-for **88%** overall accuracy. It rarely misses a defect (6%); the cost is that ~20% of
-clean strips get a false flag.*
-
-### Which class does it predict?
-
-![class confusion](../../results/figures/xp01_class_confusion.png)
-*Row % — of each true class, what the model predicted. The diagonal (correct) is strong.
-The main error is **over-predicting class 3**: some clean and class-4 strips get called
-class 3.*
-
-### False alarms on clean steel
-
-Of the 885 genuinely-clean test strips, the model wrongly flags **19.6%** — almost all of
-it class 3 (**12.9%**), then class 4 (6.0%); classes 1 and 2 barely misfire (~1%). This is
-the honest cost of tuning for detection: it seldom misses a real defect, but it cries wolf
-on about one clean strip in five, mostly by seeing class-3 lines that aren't there. Lowering
-that is the obvious next improvement (a stricter class-3 threshold, or a defect/no-defect
-gate).
-
-### Qualitative
-
-![predictions](../../results/figures/xp01_predictions.png)
-*One test defect per class: input · ground truth · model prediction.*
-
-### Test data
-
-The same five categories on the frozen test set (the split the model never trains on):
-
-![test examples](../../results/figures/xp01_examples_test.png)
+*Class 3/4 are strongest; class 2 is the weakest and noisiest — fewest examples, so treat
+its numbers as indicative.*
 
 ## Method
 
