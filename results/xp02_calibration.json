@@ -1,0 +1,199 @@
+{
+  "experiment": "xp04_calibration",
+  "checkpoint": "results/raw/xp01_ckpt/best.pt",
+  "note": "No retraining. Temperature fit on val, applied to holdout.",
+  "prediction_level": {
+    "1": {
+      "raw": {
+        "n": 127,
+        "mean_confidence": 0.9863,
+        "accuracy": 0.7402,
+        "ece": 0.2461,
+        "mce": 0.2461,
+        "brier": 0.2503
+      },
+      "temperature": 3.2957,
+      "calibrated": {
+        "n": 127,
+        "mean_confidence": 0.7939,
+        "accuracy": 0.7402,
+        "ece": 0.0588,
+        "mce": 0.3218,
+        "brier": 0.1872
+      }
+    },
+    "2": {
+      "raw": {
+        "n": 49,
+        "mean_confidence": 0.992,
+        "accuracy": 0.5714,
+        "ece": 0.4206,
+        "mce": 0.4206,
+        "brier": 0.4216
+      },
+      "temperature": 5.9115,
+      "calibrated": {
+        "n": 49,
+        "mean_confidence": 0.699,
+        "accuracy": 0.5714,
+        "ece": 0.1276,
+        "mce": 0.1611,
+        "brier": 0.259
+      }
+    },
+    "3": {
+      "raw": {
+        "n": 913,
+        "mean_confidence": 0.9744,
+        "accuracy": 0.793,
+        "ece": 0.1814,
+        "mce": 0.7983,
+        "brier": 0.1875
+      },
+      "temperature": 2.3489,
+      "calibrated": {
+        "n": 913,
+        "mean_confidence": 0.8358,
+        "accuracy": 0.793,
+        "ece": 0.1277,
+        "mce": 0.4895,
+        "brier": 0.147
+      }
+    },
+    "4": {
+      "raw": {
+        "n": 193,
+        "mean_confidence": 0.9604,
+        "accuracy": 0.601,
+        "ece": 0.3594,
+        "mce": 0.8134,
+        "brier": 0.3424
+      },
+      "temperature": 4.7633,
+      "calibrated": {
+        "n": 193,
+        "mean_confidence": 0.6861,
+        "accuracy": 0.601,
+        "ece": 0.2943,
+        "mce": 0.5881,
+        "brier": 0.211
+      }
+    },
+    "overall": {
+      "raw": {
+        "n": 1282,
+        "mean_confidence": 0.9741,
+        "accuracy": 0.7504,
+        "ece": 0.2237,
+        "mce": 0.8077,
+        "brier": 0.226
+      },
+      "temperature": 2.8009,
+      "calibrated": {
+        "n": 1282,
+        "mean_confidence": 0.8012,
+        "accuracy": 0.7504,
+        "ece": 0.1537,
+        "mce": 0.5203,
+        "brier": 0.1694
+      }
+    }
+  },
+  "pixel_level": {
+    "1": {
+      "raw": {
+        "n": 80720,
+        "mean_confidence": 0.0448,
+        "accuracy": 0.0664,
+        "ece": 0.0219,
+        "mce": 0.7797,
+        "brier": 0.0214
+      },
+      "temperature": 3.1877,
+      "calibrated": {
+        "n": 80720,
+        "mean_confidence": 0.0523,
+        "accuracy": 0.0664,
+        "ece": 0.0141,
+        "mce": 0.7447,
+        "brier": 0.0195
+      }
+    },
+    "2": {
+      "raw": {
+        "n": 76800,
+        "mean_confidence": 0.0156,
+        "accuracy": 0.0187,
+        "ece": 0.0034,
+        "mce": 0.7284,
+        "brier": 0.0033
+      },
+      "temperature": 2.6846,
+      "calibrated": {
+        "n": 76800,
+        "mean_confidence": 0.0151,
+        "accuracy": 0.0187,
+        "ece": 0.0037,
+        "mce": 0.7819,
+        "brier": 0.0032
+      }
+    },
+    "3": {
+      "raw": {
+        "n": 106280,
+        "mean_confidence": 0.2435,
+        "accuracy": 0.2909,
+        "ece": 0.0568,
+        "mce": 0.5865,
+        "brier": 0.0599
+      },
+      "temperature": 2.2601,
+      "calibrated": {
+        "n": 106280,
+        "mean_confidence": 0.2407,
+        "accuracy": 0.2909,
+        "ece": 0.0502,
+        "mce": 0.4338,
+        "brier": 0.053
+      }
+    },
+    "4": {
+      "raw": {
+        "n": 80160,
+        "mean_confidence": 0.0511,
+        "accuracy": 0.0599,
+        "ece": 0.0118,
+        "mce": 0.5591,
+        "brier": 0.0127
+      },
+      "temperature": 1.9815,
+      "calibrated": {
+        "n": 80160,
+        "mean_confidence": 0.0521,
+        "accuracy": 0.0599,
+        "ece": 0.0077,
+        "mce": 0.4225,
+        "brier": 0.0115
+      }
+    },
+    "overall": {
+      "raw": {
+        "n": 343960,
+        "mean_confidence": 0.1011,
+        "accuracy": 0.1236,
+        "ece": 0.0262,
+        "mce": 0.6002,
+        "brier": 0.0272
+      },
+      "temperature": 2.443,
+      "calibrated": {
+        "n": 343960,
+        "mean_confidence": 0.1019,
+        "accuracy": 0.1236,
+        "ece": 0.0217,
+        "mce": 0.4292,
+        "brier": 0.0244
+      }
+    }
+  }
+}
