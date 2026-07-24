@@ -1,0 +1,184 @@
+{
+  "experiment": "xp03_drift",
+  "checkpoint": "results/raw/xp01_ckpt/best.pt",
+  "decision": "clean vs defect",
+  "severities": [
+    0.0,
+    0.2,
+    0.4,
+    0.6,
+    0.8,
+    1.0
+  ],
+  "n_holdout": 1884,
+  "curves": {
+    "light_corner": {
+      "0": {
+        "accuracy": 0.8763,
+        "recall": 0.9399,
+        "specificity": 0.8045,
+        "tp": 939,
+        "fp": 173,
+        "fn": 60,
+        "tn": 712
+      },
+      "0.2": {
+        "accuracy": 0.8684,
+        "recall": 0.9349,
+        "specificity": 0.7932,
+        "tp": 934,
+        "fp": 183,
+        "fn": 65,
+        "tn": 702
+      },
+      "0.4": {
+        "accuracy": 0.8599,
+        "recall": 0.9259,
+        "specificity": 0.7853,
+        "tp": 925,
+        "fp": 190,
+        "fn": 74,
+        "tn": 695
+      },
+      "0.6": {
+        "accuracy": 0.8493,
+        "recall": 0.9119,
+        "specificity": 0.7785,
+        "tp": 911,
+        "fp": 196,
+        "fn": 88,
+        "tn": 689
+      },
+      "0.8": {
+        "accuracy": 0.8408,
+        "recall": 0.8829,
+        "specificity": 0.7932,
+        "tp": 882,
+        "fp": 183,
+        "fn": 117,
+        "tn": 702
+      },
+      "1": {
+        "accuracy": 0.8349,
+        "recall": 0.8539,
+        "specificity": 0.8136,
+        "tp": 853,
+        "fp": 165,
+        "fn": 146,
+        "tn": 720
+      }
+    },
+    "marks": {
+      "0": {
+        "accuracy": 0.8763,
+        "recall": 0.9399,
+        "specificity": 0.8045,
+        "tp": 939,
+        "fp": 173,
+        "fn": 60,
+        "tn": 712
+      },
+      "0.2": {
+        "accuracy": 0.8763,
+        "recall": 0.9399,
+        "specificity": 0.8045,
+        "tp": 939,
+        "fp": 173,
+        "fn": 60,
+        "tn": 712
+      },
+      "0.4": {
+        "accuracy": 0.8811,
+        "recall": 0.9389,
+        "specificity": 0.8158,
+        "tp": 938,
+        "fp": 163,
+        "fn": 61,
+        "tn": 722
+      },
+      "0.6": {
+        "accuracy": 0.8763,
+        "recall": 0.9269,
+        "specificity": 0.8192,
+        "tp": 926,
+        "fp": 160,
+        "fn": 73,
+        "tn": 725
+      },
+      "0.8": {
+        "accuracy": 0.8737,
+        "recall": 0.9149,
+        "specificity": 0.8271,
+        "tp": 914,
+        "fp": 153,
+        "fn": 85,
+        "tn": 732
+      },
+      "1": {
+        "accuracy": 0.8694,
+        "recall": 0.8969,
+        "specificity": 0.8384,
+        "tp": 896,
+        "fp": 143,
+        "fn": 103,
+        "tn": 742
+      }
+    },
+    "streaks": {
+      "0": {
+        "accuracy": 0.8763,
+        "recall": 0.9399,
+        "specificity": 0.8045,
+        "tp": 939,
+        "fp": 173,
+        "fn": 60,
+        "tn": 712
+      },
+      "0.2": {
+        "accuracy": 0.7362,
+        "recall": 0.965,
+        "specificity": 0.478,
+        "tp": 964,
+        "fp": 462,
+        "fn": 35,
+        "tn": 423
+      },
+      "0.4": {
+        "accuracy": 0.6815,
+        "recall": 0.975,
+        "specificity": 0.3503,
+        "tp": 974,
+        "fp": 575,
+        "fn": 25,
+        "tn": 310
+      },
+      "0.6": {
+        "accuracy": 0.638,
+        "recall": 0.985,
+        "specificity": 0.2463,
+        "tp": 984,
+        "fp": 667,
+        "fn": 15,
+        "tn": 218
+      },
+      "0.8": {
+        "accuracy": 0.6295,
+        "recall": 0.985,
+        "specificity": 0.2282,
+        "tp": 984,
+        "fp": 683,
+        "fn": 15,
+        "tn": 202
+      },
+      "1": {
+        "accuracy": 0.6311,
+        "recall": 0.983,
+        "specificity": 0.2339,
+        "tp": 982,
+        "fp": 678,
+        "fn": 17,
+        "tn": 207
+      }
+    }
+  }
+}

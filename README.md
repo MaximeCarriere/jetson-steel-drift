@@ -23,9 +23,7 @@ Building in experiment order (XP01 → XP13). See [PLAN.md](PLAN.md) for the ful
 |---|---|---|---|
 | [XP01](experiments/xp01_baseline/) | Baseline model | ✅ done | U-Net (ResNet-34) fine-tuned on the Jetson; all 4 classes detected (recall 0.70–0.97), 88% defect/clean accuracy |
 | [XP02](experiments/xp02_calibration/) | Calibration | ✅ done | defect certainty is over-confident (says ~99%, right 75%) and all-or-nothing; temperature scaling barely helps |
-| — | **GATE 1** | ⬜ | quantised model with known accuracy *and* known confidence quality |
-| XP05 | Drift simulation harness | ⬜ | |
-| XP06 | Ground-truth degradation | ⬜ | |
+| [XP03](experiments/xp03_drift/) | Drift harness + degradation | ✅ done | glare → misses defects; blobs → harmless; defect-like streaks → false alarms (specificity 0.80 → 0.23) |
 | XP07 | Calibration under drift | ⬜ | |
 | XP08 | Label-free signals | ⬜ | |
 | XP09 | **Correlation — the result** | ⬜ | |
