@@ -11,7 +11,7 @@ drop is honest degradation.
 
 ## The three drifts
 
-The same strip at severity 0 / 0.25 / 0.5 / 0.75 / 1.0:
+The same strip under each drift (columns), at rising severity (rows):
 
 ![contact sheet](../../results/figures/xp03_contact_sheet.png)
 
@@ -20,6 +20,19 @@ The same strip at severity 0 / 0.25 / 0.5 / 0.75 / 1.0:
 - **Defect-like streaks** — thin dark scratches, *shaped like real class-3 defects*.
 
 They're built to fail the model in three different ways, and they do.
+
+### Seeing the false alarms directly
+
+The same three drifts on a **genuinely clean strip**, with the model's detection overlaid
+in red — severity 0 (top) is untouched and should stay blank, so any red is a false alarm
+the drift invented:
+
+![clean detection](../../results/figures/xp03_clean_detection.png)
+
+It's unmistakable: **glare and blobs never turn red** — the model correctly keeps calling
+the clean strip clean, even buried under dark blobs. But **the defect-like streaks light up
+"DEFECT!" from severity 0.25 on** — the model paints the fake scratches as real defects.
+That is the specificity collapse below, made visible.
 
 ## Results — three different failure modes
 
@@ -58,7 +71,8 @@ curves — up for glare and streaks, flat for blobs.
 ## Reproduce
 
 ```bash
-python experiments/xp03_drift/contact_sheet.py   # the severity contact sheet
-python experiments/xp03_drift/degradation.py     # accuracy vs severity -> results/xp03_degradation.json
-python experiments/xp03_drift/make_figures.py    # the degradation curves
+python experiments/xp03_drift/contact_sheet.py    # the severity contact sheet
+python experiments/xp03_drift/clean_detection.py  # false-alarm overlay on a clean strip (needs the model)
+python experiments/xp03_drift/degradation.py      # accuracy vs severity -> results/xp03_degradation.json
+python experiments/xp03_drift/make_figures.py     # the degradation curves
 ```
