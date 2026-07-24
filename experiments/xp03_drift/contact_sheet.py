@@ -26,7 +26,7 @@ LABELS = {"light_corner": "light glare", "marks": "blob contamination",
           "streaks": "defect-like streaks"}
 
 
-PREFERRED = "0d78ac743.jpg"       # bright strip, visible class-4 defect, no dark border
+PREFERRED = "74e586515.jpg"       # smooth clean strip; same strip as clean_detection.py
 
 
 def _severity_arrow(fig) -> None:
@@ -41,7 +41,7 @@ def _severity_arrow(fig) -> None:
 
 
 def main() -> int:
-    # a bright defective strip, so the drifts are clearly visible against a real defect
+    # same clean strip as clean_detection, so both figures line up
     index = load_index()
     hold = load_split()["holdout"]
     iid = PREFERRED if PREFERRED in hold else next(i for i in sorted(hold) if index[i])
