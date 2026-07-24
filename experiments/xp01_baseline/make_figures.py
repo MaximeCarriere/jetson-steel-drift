@@ -85,54 +85,7 @@ def fig_training_curves() -> None:
     _save(fig, "xp01_training_curves.png")
 
 
-# --------------------------------------------------------------------------- fig 2
-def fig_data_distribution() -> None:
-    prof = _load("xp01_data_profile.json")
-    cls = prof["classes"]
-    t = prof["totals"]
-    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(14, 4.2))
-
-    # images per class + clean
-    labels = [f"class {c}" for c in CLASS_IDS] + ["clean\n(no defect)"]
-    vals = [cls[c]["images"] for c in CLASS_IDS] + [t["images_without_defect"]]
-    bar_colors = [COLORS[c] for c in CLASS_IDS] + [MUTED]
-    bars = ax1.bar(labels, vals, color=bar_colors)
-    for b, v in zip(bars, vals):
-        ax1.text(b.get_x() + b.get_width() / 2, v + 60, f"{v:,}", ha="center",
-                 fontsize=9)
-    ax1.set(ylabel="images", title="Class imbalance: c3 is 21× c2; 47% of images clean")
-    ax1.grid(axis="x", visible=False)
-
-    # defect area as % of image (median + IQR), log y
-    meds = [cls[c]["area_pct_of_image"]["median"] for c in CLASS_IDS]
-    p25 = [cls[c]["area_pct_of_image"]["p25"] for c in CLASS_IDS]
-    p75 = [cls[c]["area_pct_of_image"]["p75"] for c in CLASS_IDS]
-    x = np.arange(len(CLASS_IDS))
-    err = np.array([np.array(meds) - np.array(p25), np.array(p75) - np.array(meds)])
-    ax2.bar(x, meds, yerr=err, color=[COLORS[c] for c in CLASS_IDS], capsize=5,
-            error_kw={"ecolor": MUTED})
-    ax2.set(xticks=x, xticklabels=[f"c{c}" for c in CLASS_IDS], yscale="log",
-            ylabel="defect area (% of image, log)",
-            title="Defect size spans orders of magnitude\n(median, IQR whiskers)")
-    ax2.grid(axis="x", visible=False)
-
-    # bbox fill ratio — thin/wispy vs solid
-    fills = [cls[c]["bbox_fill_ratio"]["median"] for c in CLASS_IDS]
-    bars = ax3.bar([f"c{c}" for c in CLASS_IDS], fills,
-                   color=[COLORS[c] for c in CLASS_IDS])
-    for b, v in zip(bars, fills):
-        ax3.text(b.get_x() + b.get_width() / 2, v + 0.01, f"{v:.2f}", ha="center",
-                 fontsize=9)
-    ax3.set(ylabel="bbox fill ratio (1 = solid blob)", ylim=(0, 0.8),
-            title="Shape: c3/c1 thin & wispy, c2 the most solid streak")
-    ax3.grid(axis="x", visible=False)
-
-    fig.suptitle("XP01 — Severstal training data: what the four (anonymous) classes "
-                 "actually look like", fontsize=12, y=1.03)
-    _save(fig, "xp01_data_distribution.png")
-
-
-# --------------------------------------------------------------------------- fig 3
+# --------------------------------------------------------------------------- galleries
 def _overlay(ax, iid: str, rles: dict, img_dir: str, title: str,
              show_classes=CLASS_IDS) -> None:
     img = np.array(Image.open(os.path.join(img_dir, iid)).convert("L"))
@@ -185,41 +138,7 @@ def fig_fold_gallery(fold: str, filename: str, title: str, n_per: int = 3) -> No
     _save(fig, filename)
 
 
-# --------------------------------------------------------------------------- fig 4
-def fig_confusion() -> None:
-    """Per-class image-level detection confusion on the frozen holdout.
-
-    Counts come straight from the evaluator (stored, not reconstructed). c1/c2 land as
-    all-zero TP columns — the model never fires on them — which is the finding, not a
-    plotting glitch.
-    """
-    base = _load("xp01_baseline.json")
-    h = base["holdout"]
-    conf, ops = h["confusion"], h["operating_points"]
-    fig, axes = plt.subplots(1, 4, figsize=(15, 3.9))
-    for ax, c in zip(axes, CLASS_IDS):
-        cm = np.array([[conf[c]["tn"], conf[c]["fp"]],
-                       [conf[c]["fn"], conf[c]["tp"]]])
-        ax.imshow(cm, cmap="Blues", aspect="auto", vmin=0)
-        for (i, j), v in np.ndenumerate(cm):
-            ax.text(j, i, f"{v}", ha="center", va="center", fontsize=14,
-                    color="white" if v > cm.max() * 0.5 else INK, fontweight="bold")
-        rec, prec = h["img_recall"][c], h["img_precision"][c]
-        op = ops[c]
-        ax.set(xticks=[0, 1], yticks=[0, 1],
-               xticklabels=["pred\nclean", "pred\ndefect"],
-               yticklabels=["true\nclean", "true\ndefect"],
-               title=f"class {c}   recall {rec:.2f} · prec {prec:.2f}\n"
-                     f"(op: thr={op['threshold']}, min_px={op['min_px']})")
-        ax.title.set_color(COLORS[c])
-        ax.grid(False)
-    fig.suptitle("XP01 — image-level defect detection, frozen holdout (1,884 images, "
-                 "per-class operating points)\nclasses 1 & 2: TP = 0 — the model never "
-                 "detects them", fontsize=12, y=1.10)
-    _save(fig, "xp01_confusion.png")
-
-
-# --------------------------------------------------------------------------- fig 5
+# --------------------------------------------------------------------------- scorecard
 def fig_holdout_dice() -> None:
     """The honest scorecard: the freebie-inflated Kaggle Dice next to the two metrics
     that actually respond — detection recall and defect-only Dice."""
@@ -332,7 +251,6 @@ def main() -> int:
     args = a.parse_args()
 
     print("generating XP01 figures...")
-    fig_data_distribution()
     fig_fold_gallery("train", "xp01_examples_train.png",
                      "XP01 — Severstal, TRAINING data: clean + the four defect classes")
     fig_fold_gallery("holdout", "xp01_examples_test.png",
@@ -340,7 +258,6 @@ def main() -> int:
                      "defect classes")
     fig_training_curves()
     if os.path.isfile(os.path.join(RESULTS, "xp01_baseline.json")):
-        fig_confusion()
         fig_holdout_dice()
         if not args.no_model:
             fig_predictions(args.ckpt)
