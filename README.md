@@ -21,7 +21,7 @@ Building in experiment order (XP01 → XP13). See [PLAN.md](PLAN.md) for the ful
 
 | # | Experiment | Status | Result |
 |---|---|---|---|
-| [XP01](experiments/xp01_baseline/) | Baseline model | 🔶 data profiled, model chosen | 47% clean images, class 2 is 21× rarer than class 3; no Kaggle solution ships weights → fine-tune SMP U-Net |
+| [XP01](experiments/xp01_baseline/) | Baseline model | ✅ done | U-Net (ResNet-34) fine-tuned on the Jetson; all 4 classes detected (recall 0.70–0.97), 88% defect/clean accuracy |
 | XP02 | Edge deployment | ⬜ | |
 | XP03 | Day-0 certification | ⬜ | |
 | XP04 | Calibration | ⬜ | |

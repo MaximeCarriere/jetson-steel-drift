@@ -65,21 +65,19 @@ def fig_training_curves() -> None:
     fig, (axL, axR) = plt.subplots(1, 2, figsize=(12, 4.2))
 
     axL.plot(ep, [r["train_loss"] for r in h], color=INK, lw=2, marker="o", ms=4)
-    axL.set(xlabel="epoch", ylabel="train loss (Dice + BCE)",
-            title="Training loss falls smoothly, 0.92 → 0.19")
+    axL.set(xlabel="epoch", ylabel="train loss (Tversky + BCE)",
+            title="Training loss falls smoothly")
 
-    axR.plot(ep, [r["dice_mean"] for r in h], color=INK, lw=2.5, marker="o", ms=4,
-             label="mean", zorder=5)
+    # Per-class validation recall — every class is detected and stays detected.
     for c in CLASS_IDS:
-        axR.plot(ep, [r["dice_per_class"][c] for r in h], color=COLORS[c], lw=1.6,
-                 marker=".", ms=5, label=f"class {c}", alpha=0.9)
-    axR.axhline(0.47, color=MUTED, ls=":", lw=1)
-    axR.text(0.3, 0.482, "≈ all-clean freebie (empty=1.0)", ha="left",
-             va="bottom", fontsize=8, color=MUTED)
-    axR.set(xlabel="epoch", ylabel="validation Dice", ylim=(0.4, 1.0),
-            title="Training-log Dice — but c1/c2's flat high lines are ABSTENTION,\n"
-                  "not skill (see holdout scorecard)")
-    axR.legend(loc="lower right", ncol=2, framealpha=0.95, fontsize=8)
+        axR.plot(ep, [r["img_recall"][c] for r in h], color=COLORS[c], lw=1.8,
+                 marker=".", ms=6, label=f"class {c}", alpha=0.9)
+    if all("macro_f1" in r for r in h):
+        axR.plot(ep, [r["macro_f1"] for r in h], color=INK, lw=2.5, marker="o", ms=4,
+                 label="macro-F1", zorder=5)
+    axR.set(xlabel="epoch", ylabel="validation score", ylim=(0.0, 1.05),
+            title="Per-class detection recall + macro-F1 (all four classes learned)")
+    axR.legend(loc="lower right", ncol=3, framealpha=0.95, fontsize=8)
     fig.suptitle("XP01 — U-Net (ResNet-34) fine-tune, 20 epochs on the Jetson Orin Nano",
                  fontsize=12, y=1.02)
     _save(fig, "xp01_training_curves.png")
@@ -138,52 +136,82 @@ def fig_fold_gallery(fold: str, filename: str, title: str, n_per: int = 3) -> No
     _save(fig, filename)
 
 
+# --------------------------------------------------------------------------- confusion
+def _heatmap(ax, counts, labels_true, labels_pred, title, cmap="Blues"):
+    """Row-normalised (%) confusion heatmap with count + % in each cell."""
+    counts = np.asarray(counts, dtype=float)
+    row = counts.sum(axis=1, keepdims=True)
+    pct = np.divide(counts, row, out=np.zeros_like(counts), where=row > 0) * 100
+    ax.imshow(pct, cmap=cmap, vmin=0, vmax=100, aspect="auto")
+    for (i, j), p in np.ndenumerate(pct):
+        ax.text(j, i, f"{p:.0f}%\n{int(counts[i, j])}", ha="center", va="center",
+                fontsize=10, color="white" if p > 55 else INK,
+                fontweight="bold" if i == j else "normal")
+    ax.set(xticks=range(len(labels_pred)), yticks=range(len(labels_true)),
+           xticklabels=labels_pred, yticklabels=labels_true, title=title)
+    ax.set_xlabel("predicted"); ax.set_ylabel("true")
+    ax.grid(False)
+
+
+def fig_presence_absence() -> None:
+    """Does the model get 'is there ANY defect?' right — defect vs clean."""
+    h = _load("xp01_baseline.json")["holdout"]["presence_absence"]
+    cm = np.array(h["counts"])                            # [[TN,FP],[FN,TP]]
+    tn, fp, fn, tp = cm[0, 0], cm[0, 1], cm[1, 0], cm[1, 1]
+    recall = tp / max(1, tp + fn)                         # defect caught
+    spec = tn / max(1, tn + fp)                           # clean left alone
+    acc = (tp + tn) / max(1, cm.sum())
+    fig, ax = plt.subplots(figsize=(5.6, 5))
+    _heatmap(ax, cm, ["clean", "defect"], ["clean", "defect"],
+             f"Presence vs absence of defect (row %)\n"
+             f"defect recall {recall:.0%} · clean kept {spec:.0%} · acc {acc:.0%}",
+             cmap="Greens")
+    fig.suptitle("XP01 — does the model see a defect at all?", fontsize=12, y=1.0)
+    _save(fig, "xp01_presence_absence.png")
+
+
+def fig_class_confusion() -> None:
+    """Which class the model predicts for each true class (clean + 4), row %."""
+    h = _load("xp01_baseline.json")["holdout"]["class_confusion"]
+    labels = [{"clean": "clean"}.get(x, f"c{x}") for x in h["labels"]]
+    fig, ax = plt.subplots(figsize=(7.2, 6))
+    _heatmap(ax, h["counts"], labels, labels,
+             "Class confusion (row % — of each true class, what was predicted)")
+    fig.suptitle("XP01 — per-class confusion, frozen holdout", fontsize=12, y=1.0)
+    fig.text(0.5, -0.02, "Multi-defect images (~6%) reduced to their largest class. "
+             "Diagonal = correct.", ha="center", fontsize=8, color=MUTED)
+    _save(fig, "xp01_class_confusion.png")
+
+
 # --------------------------------------------------------------------------- scorecard
 def fig_holdout_dice() -> None:
-    """The honest scorecard: the freebie-inflated Kaggle Dice next to the two metrics
-    that actually respond — detection recall and defect-only Dice."""
+    """Per-class scorecard on the frozen holdout: detection recall, precision, and
+    defect-only mask Dice — the three numbers that say whether it actually works."""
     base = _load("xp01_baseline.json")
     h, x = base["holdout"], np.arange(len(CLASS_IDS))
-    fig, (axL, axR) = plt.subplots(1, 2, figsize=(14, 4.6))
+    rec = [h["img_recall"][c] for c in CLASS_IDS]
+    prec = [h["img_precision"][c] for c in CLASS_IDS]
+    dice = [h["dice_defectonly_per_class"][c] for c in CLASS_IDS]
 
-    # left: Kaggle Dice (what the naive headline uses) vs defect-only Dice
-    w = 0.38
-    kag = [h["dice_kaggle_per_class"][c] for c in CLASS_IDS]
-    pos = [h["dice_defectonly_per_class"][c] for c in CLASS_IDS]
-    axL.bar(x - w / 2, kag, w, label="Kaggle Dice (incl. clean freebie)",
-            color=MUTED, alpha=0.55)
-    b2 = axL.bar(x + w / 2, pos, w, label="defect-only Dice (honest)",
-                 color=[COLORS[c] for c in CLASS_IDS])
-    for b, v in zip(b2, pos):
-        axL.text(b.get_x() + b.get_width() / 2, v + 0.01, f"{v:.2f}", ha="center",
-                 fontsize=8)
-    for i, v in enumerate(kag):
-        axL.text(i - w / 2, v + 0.01, f"{v:.2f}", ha="center", fontsize=8, color=MUTED)
-    axL.set(xticks=x, xticklabels=[f"c{c}" for c in CLASS_IDS], ylim=(0, 1.05),
-            ylabel="Dice",
-            title="Kaggle Dice hides the failure; defect-only Dice exposes it")
-    axL.legend(loc="upper left", fontsize=8)
-    axL.grid(axis="x", visible=False)
-
-    # right: detection F1 & recall, val vs holdout — c1/c2 flatline at zero
-    hf = [h["img_f1"][c] for c in CLASS_IDS]
-    hr = [h["img_recall"][c] for c in CLASS_IDS]
-    axR.bar(x - w / 2, hr, w, label="recall", color=[COLORS[c] for c in CLASS_IDS],
-            alpha=0.55)
-    b = axR.bar(x + w / 2, hf, w, label="F1", color=[COLORS[c] for c in CLASS_IDS])
-    for i in range(len(CLASS_IDS)):
-        axR.text(i - w / 2, hr[i] + 0.01, f"{hr[i]:.2f}", ha="center", fontsize=8)
-        axR.text(i + w / 2, hf[i] + 0.01, f"{hf[i]:.2f}", ha="center", fontsize=8)
-    axR.set(xticks=x, xticklabels=[f"c{c}" for c in CLASS_IDS], ylim=(0, 1.05),
-            ylabel="score", title="Detection recall / F1 — classes 1 & 2 are at zero")
-    axR.legend(loc="upper left", fontsize=8)
-    axR.grid(axis="x", visible=False)
-
-    fig.suptitle("XP01 — frozen-holdout scorecard: a competent c3/c4 detector, blind to "
-                 "c1/c2", fontsize=12, y=1.02)
-    fig.text(0.5, -0.02, "Class 2 has only 36 defective holdout images — noisy regardless. "
-             "The point is c1 AND c2 sit at zero detection, not the exact digit.",
-             ha="center", fontsize=8, color=MUTED)
+    fig, ax = plt.subplots(figsize=(11, 4.8))
+    w = 0.26
+    series = [("recall", rec, -w), ("precision", prec, 0.0), ("defect-only Dice", dice, w)]
+    alphas = {"recall": 0.55, "precision": 0.8, "defect-only Dice": 1.0}
+    for name, vals, off in series:
+        bars = ax.bar(x + off, vals, w, label=name,
+                      color=[COLORS[c] for c in CLASS_IDS], alpha=alphas[name])
+        for b, v in zip(bars, vals):
+            ax.text(b.get_x() + b.get_width() / 2, v + 0.01, f"{v:.2f}", ha="center",
+                    fontsize=7.5)
+    ax.set(xticks=x, xticklabels=[f"class {c}" for c in CLASS_IDS], ylim=(0, 1.05),
+           ylabel="score",
+           title="XP01 — frozen-holdout scorecard: every class detected, with its "
+                 "mask quality")
+    ax.legend(loc="upper center", ncol=3, fontsize=9)
+    ax.grid(axis="x", visible=False)
+    fig.text(0.5, -0.02, "recall = defects found · precision = of the flags, how many were "
+             "real · defect-only Dice = mask overlap where a defect exists. Class 2 "
+             "(few examples) is the noisiest.", ha="center", fontsize=8, color=MUTED)
     _save(fig, "xp01_holdout_dice.png")
 
 
@@ -258,6 +286,8 @@ def main() -> int:
                      "defect classes")
     fig_training_curves()
     if os.path.isfile(os.path.join(RESULTS, "xp01_baseline.json")):
+        fig_presence_absence()
+        fig_class_confusion()
         fig_holdout_dice()
         if not args.no_model:
             fig_predictions(args.ckpt)

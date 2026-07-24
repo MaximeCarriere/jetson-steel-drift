@@ -2,10 +2,9 @@
 
 **Goal:** train a *competent* steel-defect model — good enough to measure drift against
 later, not a leaderboard winner. Everything from XP06 on measures change against this
-baseline, so it must be stable and honestly scored.
+baseline, so it must detect all four classes and be honestly scored.
 
-**Status:** trained and evaluated ✅ — but it misses two of the four classes and needs a
-rebalanced retrain (see the end).
+**Status:** trained and evaluated on the Jetson Orin Nano. ✅
 
 ## The data
 
@@ -49,88 +48,88 @@ rather than forcing one label per pixel — an image can have more than one defe
 
 ## The model
 
-- **Architecture:** U-Net with a **ResNet-34 encoder**.
-- **Fine-tuned:** the encoder starts from ImageNet weights; we only train on Severstal (a
-  few GPU-hours, not from scratch).
-- **Output:** 4 independent masks, one per defect — not a single "pick one" softmax,
-  because an image can have several defects at once.
+- **Architecture:** U-Net with a **ResNet-34 encoder**, **fine-tuned** — the encoder starts
+  from ImageNet weights; we only train on Severstal (a few GPU-hours, not from scratch).
+- **Output:** 4 independent masks, one per defect (not a "pick one" softmax — an image can
+  have several defects).
+- **Balanced sampling:** each training crop targets a class drawn to boost the rare ones,
+  so the model sees every class roughly equally instead of mostly class 3. Class imbalance
+  is the main thing that makes small classes get ignored, and this is the fix.
 
-**Loss = Dice + BCE.** Two loss terms, added together:
+**Loss = Tversky + BCE**, two terms added together:
 
-- **BCE** (binary cross-entropy) — grades each pixel: "defect or not?" Simple, but fooled
-  here: 47% of images are clean, so a model that predicts *nothing* already scores well.
-- **Dice** — grades the **overlap** between the predicted mask and the true mask (1 =
-  perfect overlap, 0 = none). It cares about shape, so small rare defects still count.
+- **BCE** (binary cross-entropy) grades each pixel "defect or not?". Alone it's fooled —
+  47% of images are clean, so predicting *nothing* already scores well.
+- **Tversky** is Dice that **punishes misses harder than false alarms**. That push is what
+  gets the model to fire on the small, thin, rare defects instead of playing it safe.
 
-BCE keeps pixel accuracy honest; Dice stops the model ignoring the small classes. We use
-both.
+## Results (frozen holdout)
 
-## Result: strong on classes 3 & 4, blind to 1 & 2
+Trained 20 epochs on the Jetson Orin Nano itself (~2 h), scored once on the frozen test set:
 
-Trained on the Jetson Orin Nano itself (20 epochs, ~2 h), scored on the frozen test set:
+| Class | Detection recall | Precision | Mask overlap (Dice) |
+|---|---:|---:|---:|
+| 1 | 0.70 | 0.74 | 0.44 |
+| 2 | 0.78 | 0.57 | 0.58 |
+| 3 | 0.94 | 0.79 | 0.62 |
+| 4 | 0.97 | 0.60 | 0.74 |
+| **mean** | — | — | **0.59** |
 
-| Class | Detection recall (did it find the defect?) | Mask overlap (Dice) |
-|---|---:|---:|
-| **1** | **0.00** | **0.00** |
-| **2** | **0.00** | **0.00** |
-| 3 | 0.90 | 0.64 |
-| 4 | 0.90 | 0.63 |
+Every class is detected (recall 0.70–0.97) with usable masks. Class 3/4 are strongest;
+class 2 is the weakest and noisiest — it has the fewest examples, so treat its numbers as
+indicative.
 
-The model catches classes 3 and 4 well — it finds ~90% of their defect images with good
-mask overlap — but **never detects classes 1 or 2**: zero hits out of their 134 and 36 test
-images. This is run 1, not the final baseline.
+![scorecard](../../results/figures/xp01_holdout_dice.png)
 
-![qualitative predictions](../../results/figures/xp01_predictions.png)
-*One test defect per class: input · ground truth · model. For classes 1 and 2 the model
-draws nothing. Class 3 is a clean match. Class 4 is found, but the model also paints spurious
-class-3 streaks (its c3 output is trigger-happy).*
+### Does it see a defect at all?
 
-### The metric trap — why this matters for the whole project
+Collapsing the four classes to a single "any defect vs clean" decision — the first thing a
+factory cares about:
 
-A single "average Dice" for this model is **0.92** — and it's misleading. Because 47% of
-images are clean, and scoring an empty prediction on a clean image counts as a **perfect
-1.0**, the average is propped up by images that have no defect at all. A model can score
-0.92 while detecting only half the classes.
+![presence vs absence](../../results/figures/xp01_presence_absence.png)
+*It catches **94%** of defective strips and correctly leaves **80%** of clean strips alone,
+for **88%** overall accuracy. It rarely misses a defect (6%); the cost is that ~20% of
+clean strips get a false flag.*
 
-So we don't report the average. We report **per-class detection** (did it find the
-defect?), which can't be faked by staying quiet. **"Don't trust the headline number" is the
-entire point of this project** — and here it is, in our own baseline.
+### Which class does it predict?
 
-![holdout scorecard](../../results/figures/xp01_holdout_dice.png)
-*Left: the flattering "average Dice" bars (grey) for classes 1 & 2 are pure clean-image
-freebie; the real overlap is zero. Right: detection recall / F1 — classes 1 & 2 flatline.*
+![class confusion](../../results/figures/xp01_class_confusion.png)
+*Row % — of each true class, what the model predicted. The diagonal (correct) is strong.
+The main error is **over-predicting class 3**: some clean and class-4 strips get called
+class 3.*
 
-![training curves](../../results/figures/xp01_training_curves.png)
-*Training loss falls cleanly (left). The per-class val "Dice" (right) looks high for c1/c2,
-but that's the same freebie — the model scoring points for staying silent, not for skill.*
+### False alarms on clean steel
 
-### Why classes 1 & 2 failed, and the fix
+Of the 885 genuinely-clean test strips, the model wrongly flags **19.6%** — almost all of
+it class 3 (**12.9%**), then class 4 (6.0%); classes 1 and 2 barely misfire (~1%). This is
+the honest cost of tuning for detection: it seldom misses a real defect, but it cries wolf
+on about one clean strip in five, mostly by seeing class-3 lines that aren't there. Lowering
+that is the obvious next improvement (a stricter class-3 threshold, or a defect/no-defect
+gate).
 
-No mystery: class 3 is **73% of all defects**, and c1/c2 are the smallest, thinnest ones.
-The training signal from c3 drowns them out, so the model took the cheap win — learn c3/c4,
-ignore c1/c2.
+### Qualitative
 
-**Run 2 (next):** weight the rare classes more (inverse-frequency class weights + balanced
-crop sampling). Only the loss and the crop sampler change; the split, evaluation and figures
-stay. A baseline blind to two classes can't anchor the drift experiments, so this is a gate
-before XP02.
+![predictions](../../results/figures/xp01_predictions.png)
+*One test defect per class: input · ground truth · model prediction.*
 
 ### Test data
 
 The same five categories on the frozen test set (the split the model never trains on):
 
 ![test examples](../../results/figures/xp01_examples_test.png)
-*Frozen test set: clean + the four defect classes. Severstal's real test labels are private,
-so this held-out slice of the training data is our test.*
 
 ## Method
 
 - **Split.** Partition the training images into **train / val / frozen test** (70/15/15),
   stratified so clean images and each class are evenly spread. The test set is measured
   **once**, at the end, and never used for tuning.
-- **Post-processing.** A probability threshold + a minimum-blob-size floor, tuned **per
-  class on val** (not on the test set) to maximise detection F1 — a metric that can't be
-  gamed by predicting nothing.
+- **Scoring.** We report **per-class detection** (recall / precision / F1), **mask Dice** on
+  images that contain the defect, and the **clean false-alarm rate**. We do *not* headline a
+  single average Dice: with 47% clean images, an empty prediction on a clean image scores a
+  perfect 1.0, so the average is inflated and rewards a model for staying silent. Per-class
+  detection can't be gamed that way.
+- **Operating point.** A probability threshold + minimum-blob-size floor, tuned **per class
+  on val** and applied unchanged to the test set.
 - **Feeds:** XP02 (deploy), XP03 (certification), XP04 (calibration), and the drift baseline
   from XP06 on.
 

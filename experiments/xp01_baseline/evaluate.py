@@ -21,6 +21,8 @@ import sys
 import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import numpy as np                                                   # noqa: E402
+
 from lib.data import SeverstalDataset                                # noqa: E402
 from lib.models import (build_model, dice_per_class,                 # noqa: E402
                         image_level_stats, pick_device)
@@ -129,8 +131,89 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+class CleanFalseAlarm:
+    """'Cries wolf on good steel': of genuinely-clean images, how many does the model wrongly
+    flag with a defect? The number a plant cares about most, isolated from other-defect
+    confusion — computed with each class's own chosen operating point.
+    """
+
+    def __init__(self, per_class_keys: dict):
+        self.keys = per_class_keys
+        self.n_clean = 0
+        self.any_fired = 0
+        self.per_class = {c: 0 for c in CLASS_IDS}
+
+    def update(self, probs: torch.Tensor, targets: torch.Tensor) -> None:
+        clean = ~targets.bool().any(dim=(1, 2, 3))            # [B] truly-clean images
+        if int(clean.sum()) == 0:
+            return
+        pc = probs[clean]
+        self.n_clean += pc.shape[0]
+        fired_any = torch.zeros(pc.shape[0], dtype=torch.bool)
+        for i, c in enumerate(CLASS_IDS):
+            thr, mp = self.keys[c]
+            area = (pc[:, i] > thr).sum(dim=(1, 2))
+            fired = area >= max(1, mp)
+            self.per_class[c] += int(fired.sum())
+            fired_any |= fired
+        self.any_fired += int(fired_any.sum())
+
+    def report(self) -> dict:
+        n = max(1, self.n_clean)
+        return {
+            "n_clean_images": self.n_clean,
+            "any_defect_false_alarm_rate": round(self.any_fired / n, 4),
+            "per_class_false_alarm_rate": {c: round(self.per_class[c] / n, 4)
+                                           for c in CLASS_IDS},
+        }
+
+
+class Confusion:
+    """Image-level confusion matrices, each class using its own operating point:
+
+      * presence/absence — a 2x2 over {clean, defect}: does the model get "is there ANY
+        defect?" right, regardless of which class.
+      * class 5x5 — over {clean, c1, c2, c3, c4}. Multi-label images (~6%) are reduced to
+        their single largest-area class (true) and the model's largest fired class (pred),
+        so this is a standard confusion the % view can read row-wise.
+    """
+
+    LABELS = ["clean", *CLASS_IDS]
+
+    def __init__(self, per_class_keys: dict):
+        self.keys = per_class_keys
+        self.binary = np.zeros((2, 2), dtype=np.int64)      # [true][pred], 0=clean 1=defect
+        self.cls = np.zeros((5, 5), dtype=np.int64)         # [true][pred] over LABELS
+
+    def update(self, probs: torch.Tensor, targets: torch.Tensor) -> None:
+        p = probs.numpy()
+        t = targets.numpy()
+        for b in range(p.shape[0]):
+            t_area = [float(t[b, i].sum()) for i in range(len(CLASS_IDS))]
+            p_area = []
+            for i, c in enumerate(CLASS_IDS):
+                thr, mp = self.keys[c]
+                a = float((p[b, i] > thr).sum())
+                p_area.append(a if a >= max(1, mp) else 0.0)
+            true_def = any(v > 0 for v in t_area)
+            pred_def = any(v > 0 for v in p_area)
+            self.binary[int(true_def), int(pred_def)] += 1
+            ti = 1 + int(np.argmax(t_area)) if true_def else 0
+            pi = 1 + int(np.argmax(p_area)) if pred_def else 0
+            self.cls[ti, pi] += 1
+
+    def report(self) -> dict:
+        return {
+            "presence_absence": {"labels": ["clean", "defect"],
+                                 "counts": self.binary.tolist()},
+            "class_confusion": {"labels": self.LABELS, "counts": self.cls.tolist()},
+        }
+
+
 @torch.no_grad()
-def run_fold(model, fold: str, device, a, grid: GridAccumulator) -> GridAccumulator:
+def run_fold(model, fold: str, device, a, grid: GridAccumulator,
+             clean_fa: "CleanFalseAlarm | None" = None,
+             confusion: "Confusion | None" = None) -> GridAccumulator:
     ds = SeverstalDataset(fold, train=False, index=load_index())
     dl = torch.utils.data.DataLoader(ds, batch_size=a.batch_size, shuffle=False,
                                      num_workers=a.workers)
@@ -139,6 +222,10 @@ def run_fold(model, fold: str, device, a, grid: GridAccumulator) -> GridAccumula
             break
         probs = torch.sigmoid(model(x.to(device))).float().cpu()
         grid.update(probs, y)
+        if clean_fa is not None:
+            clean_fa.update(probs, y)
+        if confusion is not None:
+            confusion.update(probs, y)
         if i % 50 == 0:
             print(f"  {fold} [{i}/{len(dl)}]", flush=True)
     return grid
@@ -175,9 +262,14 @@ def main() -> int:
 
     # ---- 2. measure the holdout ONCE, per-class points applied unchanged
     print("\nmeasuring frozen holdout (once, no tuning)...")
-    hgrid = run_fold(model, "holdout", device, a, GridAccumulator())
+    cfa = CleanFalseAlarm(per_class_keys)
+    cm = Confusion(per_class_keys)
+    hgrid = run_fold(model, "holdout", device, a, GridAccumulator(), clean_fa=cfa,
+                     confusion=cm)
     val_report = vgrid.score_per_class(per_class_keys)
     hold_report = hgrid.score_per_class(per_class_keys)
+    hold_report["clean_false_alarm"] = cfa.report()
+    hold_report.update(cm.report())                       # presence_absence + class_confusion
     naive_hold = hgrid.score(naive_key)
 
     split = load_split()
@@ -222,6 +314,10 @@ def main() -> int:
               f"{h['dice_kaggle_per_class'][c]:>8.3f}")
     print(f"mean  F1={out['holdout']['img_f1_mean']:.3f}   "
           f"defect-Dice={out['holdout']['dice_defectonly_mean']:.3f}")
+    fa = out["holdout"]["clean_false_alarm"]
+    print(f"clean false-alarm: {fa['any_defect_false_alarm_rate']:.3f} of "
+          f"{fa['n_clean_images']} clean strips wrongly flagged  "
+          f"(per class {fa['per_class_false_alarm_rate']})")
     print(f"\nwrote {os.path.relpath(OUT_JSON, ROOT)}")
     return 0
 

@@ -42,29 +42,39 @@ def pick_device(prefer: str = "auto") -> torch.device:
 
 
 # --------------------------------------------------------------------------- loss
-class DiceBCELoss(nn.Module):
-    """BCE + soft Dice, per class.
+class TverskyBCELoss(nn.Module):
+    """BCE + soft Tversky, per class. (Dice is the special case alpha = beta = 0.5.)
 
-    BCE alone is the wrong loss here and it fails quietly: 47% of images are defect-free
-    and the median defect covers ~3% of its image, so predicting "no defect everywhere"
-    scores well on pixel-averaged BCE. Class 2 (175 training images, ~24px wide) would be
-    the first casualty. Dice is computed per class so a rare class contributes to the
-    gradient in proportion to its own area, not the batch's.
+    Tversky index = TP / (TP + alpha*FP + beta*FN). With **beta > alpha** it penalises
+    *misses* (false negatives) more than false alarms — which is exactly the run-1 failure
+    to correct: the model made classes 1 and 2 disappear by never firing on them. Weighting
+    FN harder pushes it to fire on small/thin defects even when it is unsure. Computed per
+    class so each contributes on its own terms; the balanced sampler in data.py already
+    equalises how often each class is *seen*, so we do not also inverse-frequency weight
+    here (that would double-correct).
     """
 
-    def __init__(self, bce_weight: float = 0.5, smooth: float = 1.0):
+    def __init__(self, bce_weight: float = 0.5, alpha: float = 0.3, beta: float = 0.7,
+                 smooth: float = 1.0):
         super().__init__()
-        self.bce_weight, self.smooth = bce_weight, smooth
+        self.bce_weight, self.alpha, self.beta, self.smooth = (
+            bce_weight, alpha, beta, smooth)
         self.bce = nn.BCEWithLogitsLoss()
 
     def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         bce = self.bce(logits, target)
         probs = torch.sigmoid(logits)
         dims = (0, 2, 3)                                    # keep the class axis
-        inter = (probs * target).sum(dims)
-        denom = probs.sum(dims) + target.sum(dims)
-        dice = 1.0 - ((2 * inter + self.smooth) / (denom + self.smooth))
-        return self.bce_weight * bce + (1 - self.bce_weight) * dice.mean()
+        tp = (probs * target).sum(dims)
+        fp = (probs * (1 - target)).sum(dims)
+        fn = ((1 - probs) * target).sum(dims)
+        tversky = (tp + self.smooth) / (
+            tp + self.alpha * fp + self.beta * fn + self.smooth)
+        return self.bce_weight * bce + (1 - self.bce_weight) * (1 - tversky).mean()
+
+
+# Back-compat alias: old code / configs referring to DiceBCELoss get FN-weighted Tversky.
+DiceBCELoss = TverskyBCELoss
 
 
 # --------------------------------------------------------------------------- metrics

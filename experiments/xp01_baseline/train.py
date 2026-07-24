@@ -20,7 +20,7 @@ import torch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from lib.data import make_loaders                                    # noqa: E402
-from lib.models import (DiceBCELoss, build_model, dice_per_class,    # noqa: E402
+from lib.models import (TverskyBCELoss, build_model, dice_per_class,  # noqa: E402
                         image_level_stats, pick_device)
 from lib.severstal import CLASS_IDS, ROOT                            # noqa: E402
 
@@ -67,14 +67,18 @@ def validate(model, loader, device, limit: int = 0) -> dict:
 
     per_class = (dice_sum / max(1, n)).tolist()
     tp, fp, fn = conf["tp"].double(), conf["fp"].double(), conf["fn"].double()
+    rec = tp / (tp + fn).clamp(min=1)
+    prec = tp / (tp + fp).clamp(min=1)
+    f1 = 2 * prec * rec / (prec + rec).clamp(min=1e-9)
     return {
         "n_images": n,
         "dice_per_class": {c: round(d, 4) for c, d in zip(CLASS_IDS, per_class)},
         "dice_mean": round(sum(per_class) / len(per_class), 4),
-        "img_recall": {c: round(float(r), 4) for c, r in
-                       zip(CLASS_IDS, (tp / (tp + fn).clamp(min=1)).tolist())},
-        "img_precision": {c: round(float(p), 4) for c, p in
-                          zip(CLASS_IDS, (tp / (tp + fp).clamp(min=1)).tolist())},
+        "img_recall": {c: round(float(r), 4) for c, r in zip(CLASS_IDS, rec.tolist())},
+        "img_precision": {c: round(float(p), 4) for c, p in zip(CLASS_IDS, prec.tolist())},
+        # macro F1 gives every class equal say, so a model that abandons c1/c2 scores low —
+        # unlike mean Dice, which the run-1 blindness could hide behind the clean freebie.
+        "macro_f1": round(float(f1.mean()), 4),
     }
 
 
@@ -87,7 +91,7 @@ def main() -> int:
     train_loader, val_loader = make_loaders(batch_size=a.batch_size, workers=a.workers,
                                             crop=a.crop, seed=a.seed)
     model = build_model(encoder=a.encoder).to(device)
-    crit = DiceBCELoss()
+    crit = TverskyBCELoss(alpha=0.3, beta=0.7)         # beta>alpha: punish misses harder
     opt = torch.optim.AdamW(model.parameters(), lr=a.lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=a.epochs)
     # AMP is CUDA-only here; MPS autocast exists but the GradScaler does not.
@@ -132,27 +136,30 @@ def main() -> int:
                "lr": round(sched.get_last_lr()[0], 7),
                "secs": round(time.perf_counter() - t0, 1), **val}
         history.append(rec)
-        print(f"epoch {epoch}: loss {rec['train_loss']:.4f}  val dice "
-              f"{val['dice_mean']:.4f}  {val['dice_per_class']}  ({rec['secs']:.0f}s)",
-              flush=True)
+        rc = val["img_recall"]
+        print(f"epoch {epoch}: loss {rec['train_loss']:.4f}  macroF1 {val['macro_f1']:.4f}"
+              f"  recall c1={rc['1']:.2f} c2={rc['2']:.2f} c3={rc['3']:.2f} c4={rc['4']:.2f}"
+              f"  ({rec['secs']:.0f}s)", flush=True)
 
         state = {"model": model.state_dict(), "opt": opt.state_dict(),
                  "sched": sched.state_dict(), "scaler": scaler.state_dict(),
                  "epoch": epoch, "best": best, "history": history,
                  "args": vars(a)}
         torch.save(state, last)
-        if val["dice_mean"] > best:
-            best = val["dice_mean"]
+        # Select on macro F1, not mean Dice: the run-1 checkpoint "won" by abandoning
+        # c1/c2, which macro F1 makes impossible.
+        if val["macro_f1"] > best:
+            best = val["macro_f1"]
             state["best"] = best
             torch.save(state, os.path.join(CKPT_DIR, "best.pt"))
-            print(f"  new best {best:.4f}")
+            print(f"  new best macroF1 {best:.4f}")
 
         with open(LOG_JSON, "w") as f:
             json.dump({"experiment": "xp01_baseline", "artifact": "train_log",
-                       "device": device.type, "args": vars(a), "best_val_dice": best,
-                       "history": history}, f, indent=2)
+                       "device": device.type, "args": vars(a), "best_macro_f1": best,
+                       "selection_metric": "macro_f1", "history": history}, f, indent=2)
 
-    print(f"\nbest val dice {best:.4f}  ->  {os.path.join(CKPT_DIR, 'best.pt')}")
+    print(f"\nbest macro F1 {best:.4f}  ->  {os.path.join(CKPT_DIR, 'best.pt')}")
     return 0
 
 

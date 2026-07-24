@@ -20,7 +20,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .severstal import H, N_CLASSES, TRAIN_IMG_DIR, W, load_index, load_split, masks_for
+from .severstal import (CLASS_IDS, H, N_CLASSES, TRAIN_IMG_DIR, W, load_index,
+                        load_split, masks_for)
 
 CROP = 256
 
@@ -28,20 +29,41 @@ CROP = 256
 class SeverstalDataset(Dataset):
     """One Severstal fold.
 
-    train=True  -> random 256x256 crop + flips, defect-biased sampling.
+    train=True  -> 256x256 crop + flips, CLASS-BALANCED sampling (run-2 fix).
     train=False -> the full 256x1600 strip, no augmentation, deterministic.
+
+    Run 1 cropped around "any defect", which is usually class 3 (73% of defects), so the
+    model barely saw c1/c2 and never learned them. Run 2 samples a *target category* first
+    — clean / c1 / c2 / c3 / c4, with the rare classes boosted far above their natural rate
+    — then picks an image that has it and crops around that class. This guarantees the
+    model sees every class every epoch, which is the single change no loss tweak can
+    substitute for: a class the model never sees cannot be learned.
     """
 
     def __init__(self, fold: str, train: bool, crop: int = CROP,
-                 defect_crop_prob: float = 0.75, seed: int = 0,
+                 seed: int = 0, clean_prob: float = 0.35,
                  img_dir: str = TRAIN_IMG_DIR, index: Optional[dict] = None,
                  ids: Optional[list[str]] = None):
         self.ids = ids if ids is not None else load_split()[fold]
         self.index = index if index is not None else load_index()
         self.train, self.crop, self.img_dir = train, crop, img_dir
-        self.defect_crop_prob = defect_crop_prob
-        self.seed = seed
-        self.fold = fold
+        self.seed, self.clean_prob, self.fold = seed, clean_prob, fold
+
+        if train:
+            # Category -> image ids. Defect lists allow overlaps (a multi-class image
+            # appears under each of its classes); that is fine and mildly helpful.
+            self.by_cat: dict[str, list[str]] = {c: [] for c in CLASS_IDS}
+            self.clean: list[str] = []
+            for iid in self.ids:
+                cs = self.index[iid]
+                if not cs:
+                    self.clean.append(iid)
+                for c in cs:
+                    self.by_cat[c].append(iid)
+            # 35% clean, remaining 65% split EQUALLY across the four defect classes.
+            defect_p = (1.0 - clean_prob) / len(CLASS_IDS)
+            self.cats = ["clean", *CLASS_IDS]
+            self.cat_p = [clean_prob, *([defect_p] * len(CLASS_IDS))]
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -53,31 +75,40 @@ class SeverstalDataset(Dataset):
                        dtype=np.uint8)
         return img, masks_for(self.index[iid])
 
-    def _pick_x(self, mask: np.ndarray, rng: np.random.Generator) -> int:
-        """Left edge of the crop; biased toward a defect column when one exists."""
+    def _crop_around(self, mask: np.ndarray, cid: Optional[str],
+                     rng: np.random.Generator) -> int:
+        """Left edge of the crop, centred on class `cid`'s columns (random if clean)."""
         max_x = W - self.crop
-        cols = np.flatnonzero(mask.any(axis=(0, 1)))
-        if cols.size and rng.random() < self.defect_crop_prob:
-            c = int(rng.choice(cols))
-            return int(np.clip(c - rng.integers(0, self.crop), 0, max_x))
+        if cid is not None:
+            cols = np.flatnonzero(mask[CLASS_IDS.index(cid)].any(axis=0))
+            if cols.size:
+                c = int(rng.choice(cols))
+                return int(np.clip(c - rng.integers(0, self.crop), 0, max_x))
         return int(rng.integers(0, max_x + 1))
 
     def __getitem__(self, i: int):
-        iid = self.ids[i]
-        img, mask = self._load(iid)
+        # torch.initial_seed() differs per worker and per epoch, so crops vary across
+        # epochs while staying reproducible within a run.
+        rng = np.random.default_rng((self.seed, i, torch.initial_seed() % 2**31))
 
         if self.train:
-            # Seeded per (epoch-agnostic) index so a worker restart is reproducible but
-            # crops still vary across epochs via torch's own shuffling of `i`.
-            rng = np.random.default_rng((self.seed, i, torch.initial_seed() % 2**31))
-            x0 = self._pick_x(mask, rng)
+            cat = self.cats[int(rng.choice(len(self.cats), p=self.cat_p))]
+            pool = self.clean if cat == "clean" else self.by_cat[cat]
+            if not pool:                                    # empty class -> fall back
+                pool, cat = self.clean or self.ids, None
+            iid = str(rng.choice(pool))
+            img, mask = self._load(iid)
+            x0 = self._crop_around(mask, None if cat == "clean" else cat, rng)
             img = img[:, x0:x0 + self.crop]
             mask = mask[:, :, x0:x0 + self.crop]
-            if rng.random() < 0.5:                      # horizontal flip
+            if rng.random() < 0.5:                          # horizontal flip
                 img, mask = img[:, ::-1], mask[:, :, ::-1]
-            if rng.random() < 0.5:                      # vertical flip
+            if rng.random() < 0.5:                          # vertical flip
                 img, mask = img[::-1, :], mask[:, ::-1, :]
             img, mask = np.ascontiguousarray(img), np.ascontiguousarray(mask)
+        else:
+            iid = self.ids[i]
+            img, mask = self._load(iid)
 
         x = torch.from_numpy(img).float().div_(255.0).unsqueeze(0)   # [1,h,w]
         y = torch.from_numpy(mask)                                    # [4,h,w]
@@ -85,13 +116,16 @@ class SeverstalDataset(Dataset):
 
 
 def make_loaders(batch_size: int = 16, workers: int = 4, crop: int = CROP,
-                 val_batch: int = 4, seed: int = 0):
+                 val_batch: int = 4, seed: int = 0, clean_prob: float = 0.35):
     """Train + val loaders. The holdout is deliberately NOT exposed here."""
     index = load_index()
-    tr = SeverstalDataset("train", train=True, crop=crop, seed=seed, index=index)
+    tr = SeverstalDataset("train", train=True, crop=crop, seed=seed, index=index,
+                          clean_prob=clean_prob)
     va = SeverstalDataset("val", train=False, index=index)
     kw = dict(num_workers=workers, pin_memory=False, persistent_workers=workers > 0)
     return (
+        # shuffle=True still varies which index hits which worker RNG; the balanced
+        # sampler makes the *content* class-balanced regardless.
         torch.utils.data.DataLoader(tr, batch_size=batch_size, shuffle=True,
                                     drop_last=True, **kw),
         torch.utils.data.DataLoader(va, batch_size=val_batch, shuffle=False, **kw),
