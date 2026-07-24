@@ -1,0 +1,24 @@
+# Data & model weights — never commit (XP00 / PLAN §11.7)
+data/**
+!data/LICENCE_NOTE.md
+!data/download.md
+*.pth
+*.pt
+*.onnx
+*.engine
+*.plan
+
+# Raw per-run results — regenerable, gitignored (PLAN §11.7)
+results/raw/**
+!results/raw/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+steel-venv/
+*.egg-info/
+
+# OS / editor
+.DS_Store
+*.swp

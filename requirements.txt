@@ -1,0 +1,37 @@
+# ============================================================================
+# Jetson Orin Nano Super — JetPack r36 / L4T 5.15.148-tegra / CUDA 12.6 / Py 3.10
+# ----------------------------------------------------------------------------
+# torch/torchvision are Jetson-specific wheels; they DO NOT install from plain
+# PyPI. This project reuses the environment built for `jetson-xray-panel` and
+# adds segmentation-models-pytorch on top:
+#
+#   ~/xray-venv/bin/pip install \
+#       --constraint constraints.txt segmentation-models-pytorch
+#
+# The constraint file is what stops pip from "helpfully" replacing the Jetson
+# torch build with a PyPI aarch64 wheel that has no CUDA:
+#
+#   torch==2.11.0
+#   torchvision==0.26.0
+#   numpy==2.2.6
+#
+# To build the base environment from scratch, follow jetson-xray-panel's
+# requirements.txt — it documents the cuDSS symlink and the cuBLAS 12.9-vs-12.6
+# mismatch, both of which are required and neither of which is obvious.
+#
+# Verify after any install:
+#   python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+#   -> 2.11.0 True
+# ============================================================================
+
+# --- Jetson-specific (https://pypi.jetson-ai-lab.io/jp6/cu126) ---
+torch==2.11.0
+torchvision==0.26.0
+
+# --- from PyPI ---
+segmentation-models-pytorch==0.5.0   # U-Net + ImageNet-pretrained encoders (MIT)
+numpy==2.2.6
+pillow==12.3.0
+
+# --- monitoring (system-wide via sudo pip3, not in the venv) ---
+# jetson-stats                       # provides jtop / tegrastats wrapper

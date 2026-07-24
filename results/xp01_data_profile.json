@@ -1,0 +1,242 @@
+{
+  "experiment": "xp01_baseline",
+  "artifact": "data_profile",
+  "dataset": "Severstal Steel Defect Detection (train split)",
+  "image_shape_hw": [
+    256,
+    1600
+  ],
+  "note": "Severstal never published the semantic meaning of ClassId 1-4. The classes are anonymous; everything below is measured geometry, not a defect taxonomy.",
+  "totals": {
+    "train_images_on_disk": 12568,
+    "images_with_defect": 6666,
+    "images_without_defect": 5902,
+    "pct_without_defect": 46.96,
+    "annotation_rows": 7095,
+    "images_with_multiple_classes": 427
+  },
+  "classes": {
+    "1": {
+      "instances": 897,
+      "images": 897,
+      "share_of_annotations_pct": 12.64,
+      "total_defect_px": 3912129,
+      "area_px": {
+        "min": 163.0,
+        "p25": 1762.0,
+        "median": 3326.0,
+        "p75": 5795.0,
+        "max": 31303.0,
+        "mean": 4361.3478
+      },
+      "area_pct_of_image": {
+        "min": 0.0398,
+        "p25": 0.4302,
+        "median": 0.812,
+        "p75": 1.4148,
+        "max": 7.6423,
+        "mean": 1.0648
+      },
+      "bbox_h_px": {
+        "min": 16.0,
+        "p25": 89.0,
+        "median": 165.0,
+        "p75": 227.0,
+        "max": 256.0,
+        "mean": 157.9097
+      },
+      "bbox_w_px": {
+        "min": 11.0,
+        "p25": 31.0,
+        "median": 58.0,
+        "p75": 373.0,
+        "max": 1506.0,
+        "mean": 286.0903
+      },
+      "bbox_fill_ratio": {
+        "min": 0.008,
+        "p25": 0.0772,
+        "median": 0.391,
+        "p75": 0.6561,
+        "max": 0.881,
+        "mean": 0.3826
+      }
+    },
+    "2": {
+      "instances": 247,
+      "images": 247,
+      "share_of_annotations_pct": 3.48,
+      "total_defect_px": 834471,
+      "area_px": {
+        "min": 316.0,
+        "p25": 1947.5,
+        "median": 2944.0,
+        "p75": 4337.5,
+        "max": 14023.0,
+        "mean": 3378.4251
+      },
+      "area_pct_of_image": {
+        "min": 0.0771,
+        "p25": 0.4755,
+        "median": 0.7188,
+        "p75": 1.059,
+        "max": 3.4236,
+        "mean": 0.8248
+      },
+      "bbox_h_px": {
+        "min": 54.0,
+        "p25": 157.0,
+        "median": 208.0,
+        "p75": 255.0,
+        "max": 256.0,
+        "mean": 197.8421
+      },
+      "bbox_w_px": {
+        "min": 7.0,
+        "p25": 17.0,
+        "median": 24.0,
+        "p75": 33.0,
+        "max": 113.0,
+        "mean": 28.0972
+      },
+      "bbox_fill_ratio": {
+        "min": 0.1778,
+        "p25": 0.5046,
+        "median": 0.6568,
+        "p75": 0.7935,
+        "max": 0.9959,
+        "mean": 0.6417
+      }
+    },
+    "3": {
+      "instances": 5150,
+      "images": 5150,
+      "share_of_annotations_pct": 72.59,
+      "total_defect_px": 131306899,
+      "area_px": {
+        "min": 115.0,
+        "p25": 5054.25,
+        "median": 11953.5,
+        "p75": 29029.5,
+        "max": 368240.0,
+        "mean": 25496.4852
+      },
+      "area_pct_of_image": {
+        "min": 0.0281,
+        "p25": 1.2339,
+        "median": 2.9183,
+        "p75": 7.0873,
+        "max": 89.9023,
+        "mean": 6.2247
+      },
+      "bbox_h_px": {
+        "min": 10.0,
+        "p25": 183.0,
+        "median": 255.0,
+        "p75": 256.0,
+        "max": 256.0,
+        "mean": 212.8466
+      },
+      "bbox_w_px": {
+        "min": 4.0,
+        "p25": 77.0,
+        "median": 306.0,
+        "p75": 804.0,
+        "max": 1600.0,
+        "mean": 485.6425
+      },
+      "bbox_fill_ratio": {
+        "min": 0.004,
+        "p25": 0.1217,
+        "median": 0.2989,
+        "p75": 0.6347,
+        "max": 1.0,
+        "mean": 0.3827
+      }
+    },
+    "4": {
+      "instances": 801,
+      "images": 801,
+      "share_of_annotations_pct": 11.29,
+      "total_defect_px": 27533572,
+      "area_px": {
+        "min": 491.0,
+        "p25": 13114.0,
+        "median": 25357.0,
+        "p75": 45221.0,
+        "max": 192780.0,
+        "mean": 34373.9975
+      },
+      "area_pct_of_image": {
+        "min": 0.1199,
+        "p25": 3.2017,
+        "median": 6.1907,
+        "p75": 11.0403,
+        "max": 47.0654,
+        "mean": 8.3921
+      },
+      "bbox_h_px": {
+        "min": 24.0,
+        "p25": 140.0,
+        "median": 210.0,
+        "p75": 250.0,
+        "max": 256.0,
+        "mean": 189.7865
+      },
+      "bbox_w_px": {
+        "min": 31.0,
+        "p25": 189.0,
+        "median": 363.0,
+        "p75": 708.0,
+        "max": 1596.0,
+        "mean": 496.98
+      },
+      "bbox_fill_ratio": {
+        "min": 0.0137,
+        "p25": 0.2676,
+        "median": 0.4429,
+        "p75": 0.6162,
+        "max": 0.9263,
+        "mean": 0.4415
+      }
+    }
+  },
+  "class_combinations": {
+    "3": 4759,
+    "1": 769,
+    "4": 516,
+    "3+4": 284,
+    "2": 195,
+    "1+3": 91,
+    "1+2": 35,
+    "2+3": 14,
+    "1+2+3": 2,
+    "2+4": 1
+  },
+  "co_occurrence_images": {
+    "1": {
+      "1": 897,
+      "2": 37,
+      "3": 93,
+      "4": 0
+    },
+    "2": {
+      "1": 37,
+      "2": 247,
+      "3": 16,
+      "4": 1
+    },
+    "3": {
+      "1": 93,
+      "2": 16,
+      "3": 5150,
+      "4": 284
+    },
+    "4": {
+      "1": 0,
+      "2": 1,
+      "3": 284,
+      "4": 801
+    }
+  }
+}
