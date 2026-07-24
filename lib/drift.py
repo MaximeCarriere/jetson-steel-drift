@@ -35,11 +35,12 @@ def _restore(img: np.ndarray, was_uint8: bool) -> np.ndarray:
 
 
 def light_corner(image: np.ndarray, severity: float, corner: str = "top_right",
-                 max_boost: float = 0.75) -> np.ndarray:
-    """Smooth bright glare concentrated in a corner; strength scales with severity.
+                 max_boost: float = 1.6) -> np.ndarray:
+    """Smooth bright glare from a corner; strength AND reach scale with severity.
 
-    Additive glare that saturates the corner (over-exposure), which is what hides a defect
-    there. A 2-D Gaussian centred on the chosen corner gives the smooth falloff.
+    Additive glare that saturates the region to pure white (over-exposure), hiding any
+    defect under it. At high severity it spreads well across the strip, not just the
+    corner, so it wipes out a real fraction of the image.
     """
     img, u8 = _as_float(image)
     if severity <= 0:
@@ -48,15 +49,21 @@ def light_corner(image: np.ndarray, severity: float, corner: str = "top_right",
     ys, xs = np.mgrid[0:h, 0:w].astype(np.float32)
     cy = 0.0 if "top" in corner else h - 1.0
     cx = w - 1.0 if "right" in corner else 0.0
-    sig_y, sig_x = h * 0.7, w * 0.5                     # broad, so it's a wash not a dot
+    # reach grows with severity: a corner spot at low severity, a broad wash at high.
+    sig_y = h * (0.6 + 0.8 * severity)
+    sig_x = w * (0.4 + 0.6 * severity)
     mask = np.exp(-(((ys - cy) / sig_y) ** 2 + ((xs - cx) / sig_x) ** 2))
     out = img + severity * max_boost * mask
     return _restore(out, u8)
 
 
 def marks(image: np.ndarray, severity: float, seed: int = 0,
-          max_blobs: int = 10) -> np.ndarray:
-    """Random soft dark/bright blobs (lens contamination); count/size/opacity ~ severity."""
+          max_blobs: int = 20) -> np.ndarray:
+    """Random soft dark/bright blobs (lens contamination); count/size/opacity ~ severity.
+
+    Stronger than a light dusting: at high severity, many large near-opaque blobs that
+    cover a real fraction of the strip.
+    """
     img, u8 = _as_float(image)
     if severity <= 0:
         return _restore(img, u8)
@@ -67,8 +74,8 @@ def marks(image: np.ndarray, severity: float, seed: int = 0,
     out = img.copy()
     for _ in range(n):
         cy, cx = rng.uniform(0, h), rng.uniform(0, w)
-        radius = rng.uniform(8, 12 + severity * 40)
-        opacity = 0.35 + severity * 0.5
+        radius = rng.uniform(10, 18 + severity * 70)
+        opacity = 0.45 + severity * 0.5
         colour = 0.0 if rng.random() < 0.5 else 1.0     # oil (dark) or dust glare (bright)
         blob = np.exp(-(((ys - cy) ** 2 + (xs - cx) ** 2) / (2 * radius ** 2)))
         a = opacity * blob

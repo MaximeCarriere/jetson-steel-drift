@@ -21,8 +21,8 @@ FIG_DIR = os.path.join(ROOT, "results", "figures")
 JSON = os.path.join(ROOT, "results", "xp03_degradation.json")
 INK, MUTED, GRID = "#222222", "#666666", "#dddddd"
 C = {"accuracy": "#0072B2", "recall": "#D55E00", "specificity": "#009E73"}
-TITLE = {"light_corner": "Light glare — washes defects out (misses)",
-         "marks": "Blob contamination — model shrugs it off",
+TITLE = {"light_corner": "Strong glare — defects vanish (recall → 0)",
+         "marks": "Blob contamination — occludes defects (misses)",
          "streaks": "Defect-like streaks — false alarms"}
 plt.rcParams.update({
     "figure.facecolor": "white", "axes.facecolor": "white", "axes.edgecolor": MUTED,
@@ -50,9 +50,9 @@ def main():
     axes[0].set_ylabel("clean-vs-defect score")
     fig.suptitle("XP03 — how the model's defect detection degrades as each drift ramps up",
                  fontsize=13, y=1.02)
-    fig.text(0.5, -0.02, "Severity 0 = the clean baseline. Glare drops RECALL (misses "
-             "defects); blob marks barely matter; defect-like streaks drop SPECIFICITY "
-             "(false alarms on clean steel).", ha="center", fontsize=9, color=MUTED)
+    fig.text(0.5, -0.02, "Severity 0 = the clean baseline. Glare and blobs make the model "
+             "MISS defects (recall down — washed out or covered); defect-like streaks make "
+             "it FALSE-ALARM (specificity down).", ha="center", fontsize=9, color=MUTED)
     os.makedirs(FIG_DIR, exist_ok=True)
     fig.savefig(os.path.join(FIG_DIR, "xp03_degradation.png"), dpi=130)
     print("  wrote results/figures/xp03_degradation.png")

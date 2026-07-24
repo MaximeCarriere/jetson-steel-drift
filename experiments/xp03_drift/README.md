@@ -40,33 +40,37 @@ That is the specificity collapse below, made visible.
 
 | Drift | Accuracy | What breaks | Failure mode |
 |---|---|---|---|
-| **Light glare** | 0.88 → 0.83 | **recall** 0.94 → 0.85 | **misses** defects (washed out) |
-| **Blob contamination** | 0.88 → 0.87 | nothing | **harmless** — model shrugs it off |
-| **Defect-like streaks** | 0.88 → **0.63** | **specificity** 0.80 → **0.23** | **false alarms** (cries wolf) |
+| **Light glare** | 0.88 → **0.47** | **recall** 0.94 → **0.01** | **misses everything** (defects washed out) |
+| **Blob contamination** | 0.88 → 0.79 | recall 0.94 → 0.71 | **mild misses** (defects covered) |
+| **Defect-like streaks** | 0.88 → 0.63 | **specificity** 0.80 → **0.23** | **false alarms** (cries wolf) |
 
 Reading each curve (recall = defects caught, specificity = clean strips left alone):
 
-- **Glare washes defects out**, so the model *misses* them — recall falls. A moderate,
-  steady decline.
-- **Blob contamination barely matters.** The blobs are round; the model's defects are lines
-  and patches, so it doesn't mistake them for defects. A drift that changes the picture but
-  not the accuracy — a useful *negative control*.
-- **Defect-like streaks are catastrophic.** They look like real scratches, so the model
-  fires on them — specificity collapses from 80% to 23% (four clean strips in five now get a
-  false "defect"). Shape is what matters: the same amount of contamination is harmless as
-  blobs and ruinous as streaks.
+- **Strong glare is catastrophic.** By full severity it over-exposes most of the strip, so
+  the model detects almost nothing — recall falls off a cliff, **0.94 → 0.01**. It stops
+  firing entirely (specificity even climbs to 1.0), but it's blind: accuracy 0.88 → 0.47.
+- **Blob contamination is a milder version of the same thing.** Big dark/bright blobs *cover*
+  real defects, so some get missed — recall 0.94 → 0.71 — but the blobs don't look like
+  defects, so there are no false alarms (specificity holds ~0.88).
+- **Defect-like streaks are the opposite failure.** They look like real scratches, so the
+  model fires on them — specificity collapses from 80% to 23% (one clean strip in four now
+  gets a false "defect"). Shape is what matters: the same contamination is mild as blobs and
+  ruinous as streaks.
 
 ## Why this matters for the drift monitor
 
-These three give the monitor its test cases — and they're not all "alarm":
+Two lessons for the monitor, both from the *asymmetry*:
 
-- glare → image changed **and** accuracy dropped → the monitor **should** alarm.
-- streaks → image changed **and** accuracy collapsed → the monitor **should** alarm loudly.
-- blobs → image changed but accuracy held → the monitor should **stay quiet**.
+- **How much a drift hurts varies wildly** — glare knocks recall to ~0, blobs only to 0.71,
+  and streaks don't touch recall but wreck specificity. A monitor can't just flag "the image
+  changed"; it has to track *how much accuracy actually moved*, which differs several-fold
+  between drifts.
+- **The failure direction differs too** — glare and blobs cause **misses**, streaks cause
+  **false alarms**. A good monitor should react to all three, because all three break the
+  model, just in different ways.
 
-A monitor that fires on all three is as useless as one that fires on none. XP03 is the
-ground truth; the label-free signals (XP08) will be judged on whether they track *these*
-curves — up for glare and streaks, flat for blobs.
+XP03 is the ground truth; the label-free signals (XP08) will be judged on whether they track
+*these* curves.
 
 ## Reproduce
 

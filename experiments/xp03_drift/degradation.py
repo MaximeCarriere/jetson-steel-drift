@@ -35,21 +35,30 @@ CKPT = os.path.join(ROOT, "results/raw/xp01_ckpt/best.pt")
 BASELINE = os.path.join(ROOT, "results/xp01_baseline.json")
 OUT_JSON = os.path.join(ROOT, "results/xp03_degradation.json")
 SEVERITIES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
-BS = 8
+BS = 4                          # small: full-strip activations share the Jetson's 7 GB
+
+
+def _load(iid):
+    return np.array(Image.open(os.path.join(TRAIN_IMG_DIR, iid)).convert("L"))
 
 
 @torch.no_grad()
-def score(model, raws, labels, ops, kind, severity, device):
-    """One full drifted-holdout pass -> clean-vs-defect confusion counts."""
+def score(model, ids, labels, ops, kind, severity, device):
+    """One full drifted-holdout pass -> clean-vs-defect confusion counts.
+
+    Images are loaded per batch (not preloaded): a 700 MB image cache would compete with
+    the U-Net's activations in the Jetson's unified memory and OOM the inference.
+    """
     thr = np.array([ops[c]["threshold"] for c in CLASS_IDS])[:, None, None]
     mp = [ops[c]["min_px"] for c in CLASS_IDS]
     tp = fp = fn = tn = 0
-    for i in range(0, len(raws), BS):
-        batch_idx = range(i, min(i + BS, len(raws)))
-        drifted = [drift.apply(raws[j], kind, severity, seed=j) for j in batch_idx]
+    for i in range(0, len(ids), BS):
+        batch = range(i, min(i + BS, len(ids)))
+        drifted = [drift.apply(_load(ids[j]), kind, severity, seed=j) for j in batch]
         x = torch.from_numpy(np.stack(drifted)).float().div_(255.0).unsqueeze(1).to(device)
         probs = sigmoid(model(x).float().cpu().numpy())              # [b,4,H,W]
-        for k, j in enumerate(batch_idx):
+        del x
+        for k, j in enumerate(batch):
             fired = any((probs[k, c] > thr[c]).sum() >= max(1, mp[c])
                         for c in range(len(CLASS_IDS)))
             true = bool(labels[j])
@@ -75,9 +84,9 @@ def main() -> int:
 
     index = load_index()
     ids = load_split()["holdout"]
-    print(f"preloading {len(ids)} holdout strips...")
-    raws = [np.array(Image.open(os.path.join(TRAIN_IMG_DIR, i)).convert("L")) for i in ids]
     labels = np.array([1 if index[i] else 0 for i in ids])
+    print(f"scoring {len(ids)} holdout strips x {len(drift.KINDS)} drifts "
+          f"x {len(SEVERITIES)} severities...")
 
     out = {"experiment": "xp03_drift", "checkpoint": os.path.relpath(CKPT, ROOT),
            "decision": "clean vs defect", "severities": list(SEVERITIES),
@@ -85,7 +94,7 @@ def main() -> int:
     for kind in drift.KINDS:
         out["curves"][kind] = {}
         for s in SEVERITIES:
-            m = score(model, raws, labels, ops, kind, s, device)
+            m = score(model, ids, labels, ops, kind, s, device)
             out["curves"][kind][f"{s:g}"] = m
             print(f"  {kind:14} sev {s:<4} acc {m['accuracy']:.3f}  "
                   f"recall {m['recall']:.3f}  spec {m['specificity']:.3f}", flush=True)
